@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Round 2 Results</title>
+  <style>
+    :root{--bg:#071028;--card:#0f1724;--muted:#9aa6bf;--accent:#22c55e;--danger:#ef4444}
+    *{box-sizing:border-box}
+    body{margin:0;background:linear-gradient(180deg,var(--bg),#021025);font-family:Inter,Segoe UI,Arial,sans-serif;color:#e6eef8}
+    .container{max-width:900px;margin:40px auto;padding:20px}
+    .card{background:var(--card);border-radius:12px;padding:28px;box-shadow:0 10px 30px rgba(2,6,23,0.6)}
+    
+    .header{text-align:center;margin-bottom:28px}
+    .logo{width:64px;height:64px;border-radius:10px;background:linear-gradient(135deg,var(--accent),#0ea5a0);display:inline-flex;align-items:center;justify-content:center;font-weight:700;color:#042022;font-size:24px;margin-bottom:12px}
+    .title{font-size:24px;font-weight:600;margin:0}
+    .subtitle{color:var(--muted);margin-top:6px}
+
+    .score-box{background:linear-gradient(135deg,rgba(34,197,94,0.1),rgba(6,182,212,0.1));border:1px solid rgba(34,197,94,0.2);border-radius:12px;padding:24px;text-align:center;margin:20px 0}
+    .score-number{font-size:48px;font-weight:700;color:var(--accent)}
+    .score-label{color:var(--muted);font-size:13px;margin-top:8px}
+
+    .result-message{font-size:20px;font-weight:600;padding:16px;border-radius:8px;text-align:center;margin:20px 0}
+    .result-pass{background:rgba(34,197,94,0.1);color:#6ee7b7;border:1px solid rgba(34,197,94,0.2)}
+    .result-fail{background:rgba(239,68,68,0.1);color:#fca5a5;border:1px solid rgba(239,68,68,0.2)}
+    
+    .next-steps{background:#071428;border:1px solid rgba(34,197,94,0.2);border-radius:8px;padding:16px;margin:20px 0;color:var(--muted);line-height:1.6}
+    .next-steps strong{color:#6ee7b7}
+
+    .feedback-list{margin-top:20px}
+    .feedback-item{background:#071428;padding:14px;border-radius:8px;margin-bottom:12px;border-left:4px solid var(--accent)}
+    .feedback-q{font-weight:600;color:#e6eef8;margin-bottom:8px;font-size:14px}
+    .feedback-a{color:var(--muted);margin-bottom:8px;font-size:13px;padding:8px;background:rgba(0,0,0,0.2);border-radius:4px}
+    .feedback-marks{display:inline-block;background:var(--accent);color:#042022;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600;margin-bottom:8px}
+    .feedback-text{color:var(--muted);font-size:13px}
+
+    .button{background:var(--accent);color:#042022;padding:12px 20px;border-radius:8px;border:0;font-weight:600;cursor:pointer;font-size:14px;margin-top:20px;margin-right:8px}
+    .button:hover{opacity:0.9}
+
+    @media (max-width:640px){.container{margin:20px auto}.score-number{font-size:36px}}
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="card">
+    <div class="header">
+      <div class="logo">✓</div>
+      <h1 class="title">Round 2 Complete</h1>
+      <p class="subtitle">Your video interview has been evaluated</p>
+    </div>
+
+    <div class="score-box">
+      <div class="score-number" id="scoreDisp">0</div>
+      <div class="score-label">Total Score (Round 2)</div>
+    </div>
+
+    <div id="resultMsg" class="result-message result-pass">
+      ✓ Congratulations!
+    </div>
+
+    <div id="emailMsg" style="background:rgba(34,197,94,0.1);color:#6ee7b7;border:1px solid rgba(34,197,94,0.2);border-radius:8px;padding:12px;margin:12px 0;text-align:center;font-size:13px;display:none">
+      📧 A detailed result email has been sent to your registered email address.
+    </div>
+
+    <div id="nextStepsBox" style="display:none">
+      <div class="next-steps">
+        <strong>✓ We will connect you very soon!</strong><br>
+        Thank you for completing Round 2 of the interview. Your performance was excellent!<br>
+        Our team will review your responses and reach out to you within 2-3 business days with updates on the next steps.
+        <br><br>
+        <strong>Expected Timeline:</strong>
+        <ul>
+          <li>Response: 2-3 business days</li>
+          <li>Next Round (if applicable): Within 1 week</li>
+        </ul>
+        Please ensure we can reach you at the contact information provided.
+      </div>
+    </div>
+
+    <div id="feedbackSection" class="feedback-list"></div>
+
+    <div style="text-align:center">
+      <button class="button" onclick="location.href='index.html'">Return to Home</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Get result from sessionStorage
+  const data = JSON.parse(sessionStorage.getItem('videoResult') || '{}');
+
+  const candidateId = data.candidate_id || '';
+  const score = data.total_score || 0;
+  const maxMarks = data.max_marks || 20;
+  const pass = data.pass || (score >= 15);
+  const feedback = data.feedback || [];
+  const emailSent = data.email_sent || false;
+
+  // Display score
+  document.getElementById('scoreDisp').innerText = `${score} / ${maxMarks}`;
+
+  // Display email notification
+  if(emailSent){
+    document.getElementById('emailMsg').style.display = 'block';
+  }
+
+  // Display result message and next steps
+  const resultMsg = document.getElementById('resultMsg');
+  const nextStepsBox = document.getElementById('nextStepsBox');
+  
+  if(pass){
+    resultMsg.className = 'result-message result-pass';
+    resultMsg.innerHTML = '✓ Congratulations! You have been shortlisted for the next round.';
+    nextStepsBox.style.display = 'block';
+  } else {
+    resultMsg.className = 'result-message result-fail';
+    resultMsg.innerHTML = '✗ Sorry, you are not selected for this position. We encourage you to apply again in the future.';
+    nextStepsBox.style.display = 'none';
+  }
+
+  // Display feedback for each answer
+  if(feedback.length > 0){
+    const feedbackSection = document.getElementById('feedbackSection');
+    feedback.forEach((f, idx) => {
+      const item = document.createElement('div');
+      item.className = 'feedback-item';
+      item.innerHTML = `
+        <div class="feedback-q">Q${idx+1}: ${escapeHtml(f.question)}</div>
+        <div class="feedback-a"><strong>Your Answer:</strong> ${escapeHtml(f.answer)}</div>
+        <div><span class="feedback-marks">${f.marks} / 2 marks</span></div>
+        <div class="feedback-text"><strong>Feedback:</strong> ${escapeHtml(f.feedback)}</div>
+      `;
+      feedbackSection.appendChild(item);
+    });
+  }
+
+  function escapeHtml(s){ return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+  // Clear sessionStorage
+  sessionStorage.removeItem('videoResult');
+</script>
+
+</body>
+</html>

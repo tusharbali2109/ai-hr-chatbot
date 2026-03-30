@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AI HR Interview Bot</title>
+  <style>
+    /* color palette */
+    :root{
+      --bg:#f0f4f8;
+      --card:#ffffff;
+      --muted:#6b7280;
+      --accent:#3b82f6;
+      --accent-dark:#2563eb;
+      --text:#111827;
+      --border:#d1d5db;
+    }
+
+    body{
+      margin:0;
+      background:var(--bg);
+      font-family:Inter,Segoe UI,Arial,sans-serif;
+      color:var(--text);
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      min-height:100vh;
+    }
+
+    .wrap{
+      width:100%;
+      max-width:640px;
+      padding:24px;
+    }
+
+    .card{
+      background:var(--card);
+      padding:32px;
+      border-radius:16px;
+      box-shadow:0 8px 24px rgba(0,0,0,0.07);
+      display:flex;
+      gap:24px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+
+    .left{flex:1;min-width:220px;}
+
+    .logo{
+      width:80px;
+      height:80px;
+      border-radius:16px;
+      background:var(--accent);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      color:#fff;
+      font-weight:700;
+      font-size:24px;
+      flex-shrink:0;
+    }
+
+    h1{
+      margin:0;
+      font-size:24px;
+      line-height:1.2;
+    }
+
+    p{color:var(--muted);margin:8px 0 0;font-size:15px;}
+
+    .upload{width:100%;max-width:380px;display:flex;flex-direction:column;gap:16px;}
+
+    .file-drop{
+      border:2px dashed var(--border);
+      padding:28px;
+      border-radius:12px;
+      background:#fafafa;
+      cursor:pointer;
+      text-align:center;
+      transition:background .2s,border-color .2s;
+    }
+
+    .file-drop:hover{background:#f3f4f6;border-color:var(--accent-dark)}
+    .file-drop.active{background:#e0e7ff;border-color:var(--accent)}
+    .file-drop input{display:none}
+
+    .muted{color:var(--muted);font-size:13px}
+
+    .btn{
+      background:var(--accent);
+      color:#fff;
+      padding:12px 16px;
+      border-radius:10px;
+      border:0;
+      font-weight:600;
+      cursor:pointer;
+      transition:background .2s,transform .1s;
+    }
+
+    .btn:hover{background:var(--accent-dark);}
+    .btn:active{transform:scale(0.98);}
+
+    #status{margin-top:4px;font-size:14px;color:var(--muted);}
+    #status.error{color:#dc2626;}
+
+    .note{font-size:13px;color:var(--muted);margin-top:8px}
+
+    @media (max-width:700px){
+      .card{flex-direction:column;align-items:stretch;}
+      .upload{max-width:100%;}
+      .left{text-align:center;}
+    }
+  </style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="card">
+    <div class="left">
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        <div class="logo">AI</div>
+        <div>
+          <h1>AI‑Powered HR Interview</h1>
+          <p class="muted">Start by uploading a resume and get a quick, intelligent interview experience.</p>
+        </div>
+      </div>
+      <div class="note">Only essential information is kept — your privacy matters.</div>
+    </div>
+
+    <div class="upload">
+      <form id="form" enctype="multipart/form-data">
+        <label class="file-drop" id="dropLabel">
+          <div id="fileText">
+            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" viewBox="0 0 16 16" style="vertical-align:middle;margin-right:8px;">
+              <path d="M.5 9.9V16h15V9.9l-7.5-4.5-7.5 4.5zm7.5-5.8L15 9.9V2H1v7.9l7.5-3.8z"/>
+            </svg>
+            <span>Click or drop resume (PDF, DOCX)</span>
+          </div>
+          <input type="file" name="resume" id="resumeInput" accept=".pdf,.doc,.docx" required>
+        </label>
+        <button id="startBtn" class="btn" type="submit">Start Interview</button>
+        <div id="status" class="muted"></div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  const form = document.getElementById('form');
+  const resumeInput = document.getElementById('resumeInput');
+  const fileText = document.getElementById('fileText');
+  const status = document.getElementById('status');
+  const startBtn = document.getElementById('startBtn');
+
+  // drag & drop UX
+  const dropLabel = document.getElementById('dropLabel');
+  const fileTextWrapper = document.getElementById('fileText');
+  ['dragenter','dragover'].forEach(e=>dropLabel.addEventListener(e, ev=>{
+    ev.preventDefault();
+    dropLabel.classList.add('active');
+  }));
+  ['dragleave','drop'].forEach(e=>dropLabel.addEventListener(e, ev=>{
+    ev.preventDefault();
+    dropLabel.classList.remove('active');
+  }));
+  dropLabel.addEventListener('drop', ev=>{
+    ev.preventDefault();
+    if(ev.dataTransfer.files.length) resumeInput.files = ev.dataTransfer.files;
+    if(resumeInput.files.length) fileTextWrapper.querySelector('span').textContent = resumeInput.files[0].name;
+  });
+
+  resumeInput.addEventListener('change', ()=>{
+    if(resumeInput.files.length) fileTextWrapper.querySelector('span').textContent = resumeInput.files[0].name;
+    else fileTextWrapper.querySelector('span').textContent = 'Click or drop resume (PDF, DOCX)';
+  });
+
+  form.addEventListener('submit', async e=>{
+    e.preventDefault();
+    if(!resumeInput.files.length) return status.innerText = 'Please select a file.';
+    startBtn.disabled = true; startBtn.innerText = 'Uploading...'; status.innerText = '';
+    try{
+      const res = await fetch('../api/upload_resume.php', { method: 'POST', body: new FormData(form) });
+      let j = null;
+      try{ j = await res.json(); }catch(e){ j = null; }
+
+      if(!res.ok){
+        // show server-provided message when possible
+        status.innerText = (j && (j.message || j.error)) ? (j.message || j.error) : `Upload failed (${res.status})`;
+        status.classList.add('error');
+        startBtn.disabled = false; startBtn.innerText = 'Start Interview';
+        return;
+      }
+
+      const candidateId = j && (j.candidate_id || j.cid || j.id) ? (j.candidate_id || j.cid || j.id) : '';
+      if(!candidateId){
+        status.innerText = 'Upload succeeded but server did not return an id: ' + (j ? JSON.stringify(j) : 'no response');
+        status.classList.add('error');
+        startBtn.disabled = false; startBtn.innerText = 'Start Interview';
+        return;
+      }
+
+      localStorage.setItem('candidate_id', candidateId);
+      status.innerText = 'Upload complete. Starting interview...';
+      setTimeout(()=> location.href = 'interview.html', 350);
+    }catch(err){
+      status.innerText = 'Upload failed (network). Please try again.';
+      status.classList.add('error');
+      startBtn.disabled = false; startBtn.innerText = 'Start Interview';
+    }
+  });
+</script>
+
+</body>
+</html>

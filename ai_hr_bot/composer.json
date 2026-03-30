@@ -1,0 +1,8 @@
+{
+  "name": "ai-hr-bot/ai_hr_bot",
+  "description": "Dependencies for AI HR Interview Bot",
+  "require": {
+    "smalot/pdfparser": "^2.1",
+    "phpoffice/phpword": "^1.0"
+  }
+}

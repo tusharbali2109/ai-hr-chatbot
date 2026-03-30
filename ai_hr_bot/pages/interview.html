@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AI HR Interview</title>
+  <style>
+    :root{--bg:#071028;--card:#0f1724;--muted:#9aa6bf;--accent:#22c55e;--bot:#1f2a44}
+    *{box-sizing:border-box}
+    body{margin:0;background:linear-gradient(180deg,var(--bg),#021025);font-family:Inter,Segoe UI,Arial,sans-serif;color:#e6eef8}
+    .container{max-width:980px;margin:28px auto;padding:20px}
+    .card{background:var(--card);border-radius:12px;padding:18px;box-shadow:0 8px 30px rgba(2,6,23,0.6)}
+    .header{display:flex;align-items:center;gap:14px;margin-bottom:12px}
+    .logo{width:56px;height:56px;border-radius:10px;background:linear-gradient(135deg,var(--accent),#0ea5a0);display:flex;align-items:center;justify-content:center;font-weight:700;color:#042022}
+    .title{font-size:18px;font-weight:600}
+    .subtitle{color:var(--muted);font-size:13px}
+    .meta{margin-left:auto;text-align:right}
+
+    .progress-wrap{height:10px;background:#071226;border-radius:999px;overflow:hidden;margin:12px 0}
+    .progress{height:100%;background:linear-gradient(90deg,var(--accent),#06b6d4);width:0}
+
+    .chat{height:520px;overflow:auto;padding:18px;border-radius:10px;background:linear-gradient(180deg,rgba(255,255,255,0.01),transparent)}
+    .msg-row{display:flex;gap:12px;margin:12px 0;align-items:flex-end}
+    .msg-row.bot{flex-direction:row}
+    .msg-row.user{flex-direction:row-reverse}
+    .avatar{width:40px;height:40px;border-radius:8px;flex:0 0 40px;background:#0b1220;display:flex;align-items:center;justify-content:center;color:var(--muted);font-weight:600}
+    .bubble{max-width:78%;padding:12px 14px;border-radius:12px;font-size:15px;line-height:1.3}
+    .bubble.bot{background:var(--bot);color:#e6eef8;border-top-left-radius:4px}
+    .bubble.user{background:var(--accent);color:#042022;border-top-right-radius:4px;text-align:right}
+    .time{display:block;font-size:11px;color:var(--muted);margin-top:6px}
+
+    .composer{display:flex;gap:10px;padding-top:14px}
+    .composer textarea{flex:1;min-height:48px;max-height:140px;resize:none;padding:12px;border-radius:8px;border:0;background:#071428;color:inherit;font-size:15px}
+    .composer button{background:transparent;border:0;padding:0 14px;border-radius:8px;cursor:pointer}
+    .btn-send{background:var(--accent);color:#042022;padding:10px 14px;border-radius:8px;font-weight:600}
+    .btn-voice{background:#07263b;color:var(--muted);padding:10px;border-radius:8px}
+
+    .empty{color:var(--muted);padding:36px;text-align:center}
+
+    @media (max-width:640px){.chat{height:60vh}.title{font-size:16px}}
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="card">
+    <div class="header">
+      <div class="logo">AI</div>
+      <div>
+        <div class="title">AI HR Interview</div>
+        <div class="subtitle">Answer the questions to the best of your ability</div>
+      </div>
+      <div class="meta">
+        <div id="candidateInfo" class="subtitle">Candidate: —</div>
+        <div id="progressText" class="subtitle">0 / 0</div>
+      </div>
+    </div>
+
+    <div class="progress-wrap"><div id="progressBar" class="progress"></div></div>
+
+    <div id="chat" class="chat">
+      <div class="empty">Loading questions…</div>
+    </div>
+
+    <div class="composer">
+      <textarea id="msg" placeholder="Type your answer, press Enter to send (Shift+Enter for newline)"></textarea>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button id="voiceBtn" class="btn-voice" title="Speak answer">🎤</button>
+        <button id="sendBtn" class="btn-send">Send</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const cid = localStorage.getItem("candidate_id") || localStorage.getItem("cid") || '';
+  let questions = [], index = 0;
+  let allAnswers = []; // track all answers
+
+  const chat = document.getElementById('chat');
+  const msg = document.getElementById('msg');
+  const sendBtn = document.getElementById('sendBtn');
+  const voiceBtn = document.getElementById('voiceBtn');
+  const progressBar = document.getElementById('progressBar');
+  const progressText = document.getElementById('progressText');
+  const candidateInfo = document.getElementById('candidateInfo');
+
+  async function load(){
+    // if no candidate id, show guidance instead of calling API
+    if(!cid){
+      chat.innerHTML = '<div class="empty">No candidate ID found. Please upload your resume first. <a href="index.html" style="color:var(--accent);text-decoration:underline">Upload resume</a></div>';
+      candidateInfo.innerText = 'Candidate: (not set)';
+      progressText.innerText = '0 / 0';
+      progressBar.style.width = '0%';
+      return;
+    }
+
+    try{
+      const res = await fetch('../api/start_interview.php?cid='+encodeURIComponent(cid));
+      if(!res.ok){
+        const errBody = await res.json().catch(()=>null);
+        const msgText = errBody && (errBody.message || errBody.error) ? (errBody.message || errBody.error) : `Server error ${res.status}`;
+        questions = [String(msgText)];
+      } else {
+        const data = await res.json().catch(()=>null);
+        if(Array.isArray(data)){
+          questions = data;
+        } else if(data && typeof data === 'object'){
+          if(data.error){
+            questions = [ data.message ? `${data.error}: ${data.message}` : data.error ];
+          } else {
+            questions = [ JSON.stringify(data) ];
+          }
+        } else if(typeof data === 'string'){
+          // try to parse stringified JSON
+          try{ const parsed = JSON.parse(data); if(Array.isArray(parsed)) questions = parsed; else questions = [parsed]; }catch(e){ questions = [data]; }
+        } else {
+          questions = ["Sorry — could not load questions. Please try again."];
+        }
+      }
+    }catch(e){
+      questions = ["Sorry — could not load questions. Please try again."];
+    }
+    candidateInfo.innerText = cid ? `Candidate: ${cid}` : 'Candidate: (not set)';
+    if(!Array.isArray(questions)) questions = [String(questions)];
+    index = 0;
+    chat.innerHTML = '';
+    if(questions.length===0){ chat.innerHTML = '<div class="empty">No questions available.</div>'; }
+    updateProgress();
+    ask();
+  }
+
+  function updateProgress(){
+    const total = Math.max(questions.length,1);
+    const pct = Math.round((index/total)*100);
+    progressBar.style.width = pct + '%';
+    progressText.innerText = `${Math.min(index+1,total)} / ${total}`;
+  }
+
+  function ask(){
+    if(index < questions.length){
+      appendMessage('bot', questions[index]);
+      speak(questions[index]);
+      updateProgress();
+    } else {
+      appendMessage('bot', 'Interview complete. Thank you.');
+      updateProgress();
+    }
+  }
+
+  function appendMessage(who, text){
+    const row = document.createElement('div');
+    row.className = 'msg-row ' + who;
+
+    const avatar = document.createElement('div');
+    avatar.className = 'avatar';
+    avatar.innerText = who==='bot' ? 'HR' : 'You';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble ' + who;
+    bubble.innerText = text;
+
+    const time = document.createElement('div');
+    time.className = 'time';
+    const t = new Date();
+    time.innerText = t.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+
+    const wrap = document.createElement('div');
+    wrap.appendChild(bubble);
+    wrap.appendChild(time);
+
+    if(who === 'bot'){
+      row.appendChild(avatar);
+      row.appendChild(wrap);
+    } else {
+      row.appendChild(wrap);
+      row.appendChild(avatar);
+    }
+
+    chat.appendChild(row);
+    chat.scrollTop = chat.scrollHeight - chat.clientHeight + 60;
+  }
+
+  async function send(){
+    const value = msg.value.trim();
+    if(!value) return;
+    appendMessage('user', value);
+    allAnswers.push(value); // store answer
+
+    // optionally submit answer to backend if endpoint exists
+    try{
+      await fetch('../api/submit_answer.php', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({cid:cid, q_index:index, answer:value})
+      });
+    }catch(e){ /* ignore submit failures for UI only update */ }
+
+    msg.value = '';
+    index++;
+    setTimeout(()=>{
+      if(index < questions.length){
+        ask();
+      } else {
+        // all questions answered — submit for scoring
+        submitForScoring();
+      }
+    }, 300);
+  }
+
+  async function submitForScoring(){
+    appendMessage('bot', 'Evaluating your answers...');
+    msg.disabled = true;
+    sendBtn.disabled = true;
+    voiceBtn.disabled = true;
+    progressBar.style.width = '100%';
+
+    try{
+      const res = await fetch('../api/score_answers.php', {
+        method: 'POST',
+        headers: {'Content-Type':'application/x-www-form-urlencoded'},
+        body: 'cid='+encodeURIComponent(cid)+'&answers='+encodeURIComponent(JSON.stringify(allAnswers))+'&questions='+encodeURIComponent(JSON.stringify(questions))
+      });
+      const result = await res.json();
+      // store result in sessionStorage for result page
+      sessionStorage.setItem('interviewResult', JSON.stringify(result));
+      // navigate to result page
+      setTimeout(()=> location.href = 'result.html', 1000);
+    }catch(e){
+      appendMessage('bot', 'Error evaluating answers. Please contact support.');
+    }
+  }
+
+  // keyboard: Enter to send, Shift+Enter for newline
+  msg.addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); send(); }
+  });
+
+  sendBtn.addEventListener('click', send);
+
+  // voice recognition
+  voiceBtn.addEventListener('click', ()=>{
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if(!SpeechRecognition){ alert('Speech recognition not supported in this browser.'); return; }
+    const rec = new SpeechRecognition();
+    rec.lang = 'en-US';
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+    rec.onresult = (e)=>{ msg.value = e.results[0][0].transcript; send(); };
+    rec.onerror = ()=>{/* ignore */};
+    rec.start();
+  });
+
+  function speak(t){
+    if(!('speechSynthesis' in window)) return;
+    const u = new SpeechSynthesisUtterance(t);
+    u.lang = 'en-US';
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(u);
+  }
+
+  load();
+</script>
+
+</body>
+</html>
