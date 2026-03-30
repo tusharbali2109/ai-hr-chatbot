@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Interview Report</title>
+<style>
+body{background:#020617;color:white;font-family:Arial}
+.box{max-width:700px;margin:60px auto;padding:30px;background:#0f172a;border-radius:12px}
+</style>
+</head>
+<body>
+
+<div class="box" id="box">Loading...</div>
+
+<script>
+let cid = localStorage.getItem("cid");
+
+fetch("../api/generate_report.php?cid="+cid)
+.then(r=>r.json())
+.then(d=>box.innerText=d.report);
+</script>
+
+</body>
+</html>
