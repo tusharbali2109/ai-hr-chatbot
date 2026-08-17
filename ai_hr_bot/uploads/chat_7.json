@@ -1,0 +1,26 @@
+[
+    {
+        "role": "user",
+        "content": "yes"
+    },
+    {
+        "role": "assistant",
+        "content": "It's lovely to meet you, Tushar. Can you start by telling me a little bit about your background and what inspired you to pursue a career in this field, particularly with a focus on AI as I see from your updated resume?"
+    },
+    {
+        "role": "user",
+        "content": "tushar  bali this side working as a full stack developer with 2 years of experiance"
+    },
+    {
+        "role": "assistant",
+        "content": "That's great to hear that you have 2 years of experience as a full stack developer, Tushar. Can you walk me through some of the key skills you've developed during this time, and how you've applied them to projects or challenges you've faced? What sparked your interest in transitioning towards a role with a focus on AI?"
+    },
+    {
+        "role": "user",
+        "content": "nice"
+    },
+    {
+        "role": "assistant",
+        "content": "It sounds like you're excited about the opportunity, Tushar. Can you tell me about some of your most significant achievements as a full stack developer, and how you think your skills will translate to a role that incorporates AI, such as any projects you've worked on that involved machine learning or data analysis? What are your long-term career goals, and how does this role fit into your vision for your future?"
+    }
+]

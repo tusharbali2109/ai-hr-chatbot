@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,user-scalable=yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#071028">
+  <title>Round 2 - Video Interview</title>
+  <style>
+    :root{--bg:#071028;--card:#0f1724;--muted:#9aa6bf;--accent:#22c55e}
+    *{box-sizing:border-box}
+    body{margin:0;background:linear-gradient(180deg,var(--bg),#021025);font-family:Inter,Segoe UI,Arial,sans-serif;color:#e6eef8;overflow-x:hidden}
+    .container{max-width:1000px;margin:20px auto;padding:12px}
+    .card{background:var(--card);border-radius:12px;padding:16px;box-shadow:0 10px 30px rgba(2,6,23,0.6)}
+    
+    .header{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+    .logo{width:40px;height:40px;border-radius:8px;background:linear-gradient(135deg,var(--accent),#0ea5a0);display:flex;align-items:center;justify-content:center;font-weight:700;color:#042022;font-size:16px;flex-shrink:0}
+    .title{font-size:14px;font-weight:600}
+    .meta{margin-left:auto;text-align:right;font-size:11px;color:var(--muted);display:flex;flex-direction:column;gap:4px;min-width:100px}
+
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+    
+    .video-panel{background:#071428;border-radius:8px;overflow:hidden;aspect-ratio:4/3;position:relative}
+    #videoPreview{width:100%;height:100%;background:#000;display:block}
+    
+    .question-panel{background:#071428;border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px}
+    .question-text{font-size:13px;font-weight:600;color:#e6eef8;line-height:1.4}
+    .answer-box{flex:1;background:#0b1220;border-radius:6px;padding:10px;overflow-y:auto;min-height:100px;max-height:180px}
+    .answer-text{color:var(--muted);font-size:12px;white-space:pre-wrap;word-break:break-word;line-height:1.3}
+    
+    .controls{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px}
+    .btn{padding:10px;border:0;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;touch-action:manipulation;-webkit-user-select:none;user-select:none}
+    .btn-record{background:#ef4444;color:white;grid-column:1}
+    .btn-record.recording{background:#22c55e}
+    .btn-voice{background:#07263b;color:var(--accent);grid-column:2}
+    .btn-next{background:var(--accent);color:#042022;grid-column:1/3;width:100%}
+    .btn-send{background:var(--accent);color:#042022;width:100%}
+    
+    .progress-bar{height:6px;background:#071226;border-radius:999px;overflow:hidden;margin:10px 0}
+    .progress-fill{height:100%;background:linear-gradient(90deg,var(--accent),#06b6d4);width:0}
+    
+    .status{font-size:11px;color:var(--muted);text-align:center;margin:6px 0;min-height:20px}
+    .composer{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+    .composer textarea{width:100%;min-height:50px;max-height:120px;padding:8px;border-radius:6px;border:0;background:#0b1220;color:inherit;font-size:12px;font-family:inherit;resize:vertical}
+    .composer .btn-send{align-self:stretch;padding:10px;border-radius:6px}
+    
+    /* Cheating Detection UI */
+    .strikes-indicator{position:absolute;top:8px;right:8px;background:rgba(239,68,68,0.2);border:2px solid #ef4444;border-radius:6px;padding:6px 10px;font-size:11px;font-weight:600;color:#ef4444;z-index:100}
+    .strikes-indicator.warning{animation:shake 0.5s}
+    @keyframes shake{0%,100%{transform:translateX(0)} 25%{transform:translateX(-3px)} 75%{transform:translateX(3px)}}
+    
+    .warning-modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);display:none;align-items:center;justify-content:center;z-index:1000;padding:16px}
+    .warning-modal.show{display:flex}
+    .warning-content{background:var(--card);border-radius:12px;padding:24px;max-width:85vw;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.9);max-height:85vh;overflow-y:auto}
+    .warning-icon{font-size:48px;margin-bottom:12px;animation:bounce 0.6s}
+    @keyframes bounce{0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)}}
+    .warning-title{font-size:18px;font-weight:700;color:#ef4444;margin-bottom:10px}
+    .warning-text{color:var(--muted);margin-bottom:12px;line-height:1.4;font-size:13px}
+    .warning-strikes{font-size:28px;color:#ef4444;font-weight:700;margin:12px 0}
+    .warning-btn{background:var(--accent);color:#042022;border:0;padding:12px 20px;border-radius:6px;font-weight:600;cursor:pointer;font-size:13px;width:100%;touch-action:manipulation}
+    .warning-btn:active{opacity:0.8}
+    
+    .face-indicator{position:absolute;bottom:8px;right:8px;padding:4px 8px;border-radius:4px;font-size:10px;font-weight:600;z-index:99;background:rgba(0,0,0,0.5)}
+    .face-indicator.detected{background:rgba(34,197,94,0.3);color:#22c55e}
+    .face-indicator.not-detected{background:rgba(239,68,68,0.3);color:#ef4444}
+    
+    .video-panel{position:relative}
+    
+    /* Violation Types Styling */
+    .violation-type{font-size:10px;color:#b4bdcc;margin-top:6px;padding-top:6px;border-top:1px solid rgba(155,166,191,0.2)}
+    .violation-reason{font-weight:600;color:#ef4444}
+    
+    /* Select styling */
+    select{-webkit-appearance:none;-moz-appearance:none;appearance:none;background-repeat:no-repeat;padding-right:24px;background-image:url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");background-position:right 6px center;background-size:18px}
+    select option{background:#0f1724;color:#e6eef8}
+    
+    /* Mobile Responsive */
+    @media (max-width:768px){
+      .container{margin:16px auto;padding:8px}
+      .card{padding:12px}
+      .grid{grid-template-columns:1fr;gap:10px}
+      .header{margin-bottom:10px}
+      .title{font-size:13px}
+      .meta{font-size:10px;min-width:auto}
+      .question-panel{padding:10px}
+      .answer-box{min-height:80px;max-height:150px}
+      .controls{grid-template-columns:1fr 1fr}
+      .btn{padding:8px;font-size:11px}
+      .voice-selector{flex-direction:column;align-items:flex-start;gap:4px}
+      .warning-content{padding:20px;max-width:90vw}
+      .warning-icon{font-size:40px}
+      .warning-title{font-size:16px}
+      .warning-text{font-size:12px}
+    }
+    
+    @media (max-width:480px){
+      .container{margin:12px auto;padding:6px}
+      .card{padding:10px;border-radius:10px}
+      .header{gap:8px;margin-bottom:8px}
+      .logo{width:36px;height:36px;font-size:14px}
+      .title{font-size:12px}
+      .grid{gap:8px;margin-bottom:10px}
+      .video-panel{aspect-ratio:3/2}
+      .question-text{font-size:12px}
+      .answer-box{min-height:70px;max-height:120px;padding:8px}
+      .answer-text{font-size:11px}
+      .controls{grid-template-columns:1fr 1fr;gap:4px}
+      .btn{padding:8px;font-size:10px;border-radius:5px}
+      .btn-next{grid-column:1/3}
+      .progress-bar{height:5px;margin:8px 0}
+      .status{font-size:10px}
+      .composer textarea{min-height:45px;font-size:11px;padding:6px}
+      .strikes-indicator{top:4px;right:4px;padding:4px 8px;font-size:9px}
+      .face-indicator{bottom:4px;right:4px;font-size:9px;padding:3px 6px}
+      .warning-content{padding:16px;max-width:95vw}
+      .warning-icon{font-size:36px;margin-bottom:8px}
+      .warning-title{font-size:14px;margin-bottom:8px}
+      .warning-text{font-size:11px;margin-bottom:10px}
+      .warning-strikes{font-size:24px;margin:8px 0}
+      .warning-btn{padding:10px;font-size:12px}
+    }
+  </style>
+  <!-- Face detection library -->
+  <script async src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.11.0"></script>
+  <script async src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2"></script>
+</head>
+<body>
+
+<!-- Warning Modal -->
+<div id="warningModal" class="warning-modal">
+  <div class="warning-content">
+    <div class="warning-icon" id="violationIcon">⚠️</div>
+    <div class="warning-title" id="violationTitle">Warning!</div>
+    <div class="warning-text" id="violationMessage">Please keep your face visible in the camera frame</div>
+    <div class="violation-type" id="violationDetails" style="display:none"></div>
+    <div class="warning-strikes"><span id="strikeCount">1</span>/3</div>
+    <div class="warning-text" style="font-size:12px;color:#b4bdcc" id="finalWarning">One more violation and you will be rejected</div>
+    <button class="warning-btn" onclick="closeWarning()">Understood</button>
+  </div>
+</div>
+
+<div class="container" style="position:relative">
+  <div id="strikesIndicator" class="strikes-indicator" style="display:none">Warnings: <span id="strikeDisplay">0</span>/3</div>
+  <div class="card">
+    <div class="header">
+      <div class="logo">🎥</div>
+      <div>
+        <div class="title">Round 2 - Video Interview</div>
+        <div style="font-size:11px;color:var(--muted)">AI HR Assessment</div>
+      </div>
+      <div class="meta">
+        <div id="experienceBracket">Experience: —</div>
+        <div id="progressText">0 / 0</div>
+      </div>
+    </div>
+    
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;justify-content:space-between;align-items:center">
+      <div class="voice-selector" style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:4px">
+        <label for="voiceSelect">Voice:</label>
+        <select id="voiceSelect" onchange="updateVoice()" style="font-size:11px;padding:4px;border-radius:4px;border:1px solid rgba(34,197,94,0.3);background:#0b1220;color:var(--accent)">
+          <option value="default">Default</option>
+          <option value="male">Male</option>
+          <option value="female">Female</option>
+        </select>
+      </div>
+      <button onclick="load()" style="background:var(--accent);color:#042022;border:0;padding:6px 10px;border-radius:4px;font-size:10px;font-weight:600;cursor:pointer;touch-action:manipulation">⟳ Retry</button>
+    </div>
+
+    <div class="progress-bar"><div id="progressBar" class="progress-fill"></div></div>
+
+    <div class="grid">
+      <div style="position:relative">
+        <video id="videoPreview" autoplay muted playsinline></video>
+        <canvas id="detectionCanvas" style="display:none"></canvas>
+        <div class="face-indicator" id="faceIndicator">📹 Checking...</div>
+      </div>
+      <div class="question-panel">
+        <div class="question-text" id="questionText">Loading questions...</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">The AI assistant will ask questions out loud. Speak your answer; it will appear below automatically.</div>
+        <div class="answer-box">
+          <div class="answer-text" id="answerText">Waiting for question...</div>
+        </div>
+        <div class="controls">
+          <button id="recordBtn" class="btn btn-record" onclick="toggleRecord()">● Record</button>
+          <button id="voiceBtn" class="btn btn-voice" type="button" title="Speak answer" onclick="startVoiceInput()">🎤 Speak</button>
+          <button id="nextBtn" class="btn btn-next" onclick="nextQuestion()" style="display:none">Next →</button>
+      </div>
+      <!-- optional text answer composer -->
+      <div class="composer">
+        <textarea id="textAnswer" placeholder="Type your answer here..."></textarea>
+        <button id="sendTextBtn" class="btn btn-send" onclick="submitTextAnswer()">Send Answer</button>
+      </div>
+      <div class="status" id="status"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const cid = localStorage.getItem("candidate_id") || localStorage.getItem("cid") || '';
+  console.log('=== Video Interview Start ===');
+  console.log('Candidate ID:', cid);
+  console.log('localStorage keys:', Object.keys(localStorage));
+  
+  let questions = [], answers = [], index = 0;
+  let mediaRecorder = null, recordedChunks = [];
+  let stream = null;
+  // Speech recognition instance used to auto‑transcribe while recording
+  let recognition = null;
+  
+  // Face Detection & Cheating Detection Variables
+  let strikes = 0;
+  const MAX_STRIKES = 3;
+  let isFaceDetected = false;
+  let faceCheckInterval = null;
+  let recordingStarted = false;
+  let consecutiveNoFaceFrames = 0;
+  const NO_FACE_THRESHOLD = 15; // 15 frames without face = warning
+  let detectionModel = null;
+  
+  // Violation tracking
+  let violationTypes = {
+    'face_not_visible': { count: 0, message: 'Face not visible in frame', icon: '👤' },
+    'looking_away': { count: 0, message: 'Please look at the camera', icon: '👀' },
+    'phone_detected': { count: 0, message: 'Phone or external device detected', icon: '📱' },
+    'multiple_people': { count: 0, message: 'Multiple people detected in frame', icon: '👥' },
+    'tab_switched': { count: 0, message: 'Please do not switch windows/tabs', icon: '⚠️' }
+  };
+  
+  let lastViolationType = null;
+  let windowFocused = true;
+
+  // Face Detection functions
+  async function loadFaceDetectionModel(){
+    try {
+      detectionModel = await cocoSsd.load();
+      console.log('Face detection model loaded');
+    } catch (e) {
+      console.error('Failed to load detection model:', e);
+    }
+  }
+
+  async function detectViolations() {
+    if (!detectionModel || !stream) return null;
+    
+    try {
+      const video = document.getElementById('videoPreview');
+      const predictions = await detectionModel.detect(video);
+      
+      // Check for different violation types
+      let violation = null;
+      
+      // Count person/face detections
+      const personCount = predictions.filter(p => p.class === 'person' && p.score > 0.5).length;
+      const hasFace = personCount > 0;
+      
+      // Check for phone/mobile device
+      const hasPhone = predictions.some(p => 
+        (p.class === 'cell phone' || p.class === 'phone' || p.class === 'mobile phone') && 
+        (p.score > 0.6)
+      );
+      
+      // Check multiple people
+      if(personCount > 1) {
+        violation = 'multiple_people';
+      }
+      // Check for phone
+      else if(hasPhone) {
+        violation = 'phone_detected';
+      }
+      // Check if face is centered/not looking away
+      else if(hasFace) {
+        // Simple check: if face is in frame, check if it's looking away
+        const faceBbox = predictions.find(p => p.class === 'person' && p.score > 0.5);
+        if(faceBbox) {
+          const videoWidth = video.videoWidth;
+          const videoHeight = video.videoHeight;
+          const faceX = faceBbox.bbox[0];
+          const faceWidth = faceBbox.bbox[2];
+          
+          // If face is too far to one side, they're looking away
+          const faceCenter = faceX + faceWidth / 2;
+          const videoCenterX = videoWidth / 2;
+          const offset = Math.abs(faceCenter - videoCenterX);
+          
+          if(offset > videoWidth * 0.35) { // More than 35% off center
+            violation = 'looking_away';
+          }
+        }
+      }
+      // No face detected
+      else {
+        violation = 'face_not_visible';
+      }
+      
+      return violation;
+    } catch (e) {
+      console.error('Detection error:', e);
+      return null;
+    }
+  }
+
+  async function startFaceMonitoring() {
+    if (!recordingStarted) return;
+    
+    faceCheckInterval = setInterval(async () => {
+      if (!mediaRecorder || mediaRecorder.state !== 'recording') {
+        clearInterval(faceCheckInterval);
+        return;
+      }
+      
+      const violation = await detectViolations();
+      
+      const indicator = document.getElementById('faceIndicator');
+      if (indicator) {
+        if (violation === null) {
+          indicator.className = 'face-indicator detected';
+          indicator.innerText = '✓ All clear';
+          consecutiveNoFaceFrames = 0;
+        } else {
+          consecutiveNoFaceFrames++;
+          
+          // Update indicator based on violation type
+          indicator.className = 'face-indicator not-detected';
+          const violationData = violationTypes[violation];
+          if(violationData) {
+            indicator.innerText = violationData.icon + ' ' + violationData.message;
+          }
+          
+          // Trigger warning after threshold
+          if (consecutiveNoFaceFrames >= NO_FACE_THRESHOLD && strikes < MAX_STRIKES) {
+            recordingPause();
+            lastViolationType = violation;
+            showWarning();
+            consecutiveNoFaceFrames = 0;
+          }
+        }
+      }
+    }, 500);
+  }
+
+  function showWarning() {
+    strikes++;
+    
+    // Track violation counts
+    if (lastViolationType && violationTypes[lastViolationType]) {
+      violationTypes[lastViolationType].count++;
+    }
+    
+    if (lastViolationType && violationTypes[lastViolationType]) {
+      const violationData = violationTypes[lastViolationType];
+      
+      // Update modal content based on violation type
+      document.getElementById('violationIcon').innerText = violationData.icon;
+      document.getElementById('violationTitle').innerText = 'Interview Policy Violation';
+      document.getElementById('violationMessage').innerText = violationData.message;
+      
+      // Show violation details
+      const detailsEl = document.getElementById('violationDetails');
+      detailsEl.style.display = 'block';
+      detailsEl.innerHTML = `<span class="violation-reason">Type:</span> ${violationData.message}`;
+      
+      // Update final warning text
+      if (strikes >= MAX_STRIKES - 1) {
+        document.getElementById('finalWarning').innerText = '⚠️ FINAL WARNING - Next violation will result in immediate rejection.';
+      } else {
+        document.getElementById('finalWarning').innerText = `${strikes}/3 warnings received. ${MAX_STRIKES - strikes} warning${MAX_STRIKES - strikes > 1 ? 's' : ''} remaining.`;
+      }
+    }
+    
+    document.getElementById('strikeCount').innerText = strikes;
+    document.getElementById('strikeDisplay').innerText = strikes;
+    document.getElementById('strikesIndicator').style.display = 'block';
+    document.getElementById('strikesIndicator').classList.add('warning');
+    
+    const modal = document.getElementById('warningModal');
+    modal.classList.add('show');
+    
+    if (strikes >= MAX_STRIKES) {
+      setTimeout(() => {
+        rejectCandidate();
+      }, 2000);
+    }
+  }
+
+  function closeWarning() {
+    document.getElementById('warningModal').classList.remove('show');
+    document.getElementById('strikesIndicator').classList.remove('warning');
+    consecutiveNoFaceFrames = 0;
+    
+    // Resume recording if it was paused
+    if (mediaRecorder && mediaRecorder.state === 'paused') {
+      mediaRecorder.resume();
+    }
+  }
+
+  function recordingPause() {
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+      mediaRecorder.pause();
+    }
+  }
+
+  function rejectCandidate() {
+    // Stop all recording and monitoring
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop();
+    }
+    if (recognition) recognition.stop();
+    if (faceCheckInterval) clearInterval(faceCheckInterval);
+    
+    // Disable controls
+    document.getElementById('recordBtn').disabled = true;
+    document.getElementById('voiceBtn').disabled = true;
+    document.getElementById('nextBtn').disabled = true;
+    
+    // Prepare violation summary
+    const violationSummary = Object.keys(violationTypes)
+      .filter(key => violationTypes[key].count > 0)
+      .map(key => `${key}:${violationTypes[key].count}`)
+      .join('|');
+    
+    // Redirect to rejection page with violation details
+    setTimeout(() => {
+      const url = `rejection.html?reason=Multiple+policy+violations+detected&violations=${encodeURIComponent(violationSummary)}`;
+      location.href = url;
+    }, 500);
+  }
+
+  async function initVideo(){
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({audio:true, video:{width:640, height:480}});
+      document.getElementById('videoPreview').srcObject = stream;
+      
+      // Add window focus detection for tab switching
+      window.addEventListener('blur', () => {
+        if (mediaRecorder && mediaRecorder.state === 'recording' && recordingStarted) {
+          windowFocused = false;
+          lastViolationType = 'tab_switched';
+          recordingPause();
+          showWarning();
+        }
+      });
+      
+      window.addEventListener('focus', () => {
+        windowFocused = true;
+      });
+      
+    }catch(e){
+      document.getElementById('status').innerText = 'Camera access denied. Please allow access.';
+    }
+  }
+
+  function initSpeechRecognition(){
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if(!SpeechRecognition){ return null; }
+    const rec = new SpeechRecognition();
+    rec.lang = 'en-US';
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.onresult = (e) => {
+      let interim = '';
+      for(let i = e.resultIndex; i < e.results.length; i++){
+        const t = e.results[i][0].transcript;
+        interim += (e.results[i].isFinal ? t : t);
+      }
+      document.getElementById('answerText').innerText = interim;
+      if(e.results[e.results.length-1].isFinal){
+        answers[index] = interim;
+      }
+    };
+    rec.onerror = () => document.getElementById('status').innerText = 'Speech recognition error.';
+    rec.onend = () => {
+      // keep recognition alive while recording
+      if(mediaRecorder && mediaRecorder.state === 'recording'){
+        rec.start();
+      }
+    };
+    return rec;
+  }
+
+  async function load(){
+    // verify we have a candidate id; otherwise prompt the user to start from the upload page
+    if(!cid){
+      document.getElementById('questionText').innerText = 'Candidate ID missing – please upload your resume first.';
+      document.getElementById('status').innerHTML = '<a href="index.html" style="color:var(--accent);text-decoration:underline">Go to upload page</a>';
+      console.error('No candidate ID found in localStorage');
+      return;
+    }
+
+    try{
+      document.getElementById('questionText').innerText = 'Loading questions...';
+      document.getElementById('status').innerText = 'Fetching interview questions...';
+      
+      const apiUrl = '../api/start_video_interview.php?cid='+encodeURIComponent(cid);
+      console.log('Fetching from:', apiUrl, 'CID:', cid);
+      
+      const res = await fetch(apiUrl);
+      console.log('Response status:', res.status, 'OK:', res.ok);
+      
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      
+      const data = await res.json();
+      console.log('Response data:', data);
+      
+      if(data.error){
+        document.getElementById('questionText').innerText = 'Error: ' + (data.message || data.error);
+        document.getElementById('status').innerText = 'API Error: ' + JSON.stringify(data);
+        return;
+      }
+      
+      questions = data.questions || [];
+      console.log('Questions loaded:', questions.length);
+      
+      if(!questions || questions.length === 0){
+        document.getElementById('questionText').innerText = 'No questions available for this profile.';
+        document.getElementById('status').innerText = 'Please contact support.';
+        return;
+      }
+      
+      document.getElementById('experienceBracket').innerText = 'Experience: ' + (data.experience_bracket || '0-2');
+      document.getElementById('progressText').innerText = '0 / ' + questions.length;
+      document.getElementById('status').innerText = '';
+      index = 0;
+      answers = [];
+      askQuestion();
+    }catch(e){
+      console.error('Load error:', e);
+      document.getElementById('questionText').innerText = 'Failed to load questions.';
+      document.getElementById('status').innerText = 'Error: ' + e.message + '. Check console for details.';
+    }
+  }
+
+  function updateProgress(){
+    const total = Math.max(questions.length, 1);
+    const pct = Math.round((index / total) * 100);
+    document.getElementById('progressBar').style.width = pct + '%';
+    document.getElementById('progressText').innerText = Math.min(index + 1, total) + ' / ' + total;
+  }
+
+  function askQuestion(){
+    if(index < questions.length){
+      document.getElementById('questionText').innerText = 'Q' + (index+1) + ': ' + questions[index];
+      document.getElementById('answerText').innerText = 'Listening...';
+      document.getElementById('recordBtn').style.display = 'inline-block';
+      document.getElementById('nextBtn').style.display = 'none';
+      recordedChunks = [];
+      updateProgress();
+      speak(questions[index]);
+    } else {
+      submitForScoring();
+    }
+  }
+
+  function toggleRecord(){
+    const btn = document.getElementById('recordBtn');
+    if(mediaRecorder && mediaRecorder.state === 'recording'){
+      mediaRecorder.stop();
+      if(recognition) recognition.stop();
+      if(faceCheckInterval) clearInterval(faceCheckInterval);
+      recordingStarted = false;
+      btn.classList.remove('recording');
+      btn.innerText = '● Record';
+    } else {
+      if(!stream) return;
+      recordedChunks = [];
+      mediaRecorder = new MediaRecorder(stream, {mimeType:'video/webm'});
+      mediaRecorder.ondataavailable = e => recordedChunks.push(e.data);
+      mediaRecorder.onstop = () => {
+        document.getElementById('status').innerText = 'Recording saved. Click Next to continue.';
+        document.getElementById('nextBtn').style.display = 'inline-block';
+      };
+      mediaRecorder.start();
+      recordingStarted = true;
+      // start automatic speech recognition while recording
+      if(!recognition){ recognition = initSpeechRecognition(); }
+      if(recognition){ recognition.start(); }
+      // Start face monitoring
+      startFaceMonitoring();
+      btn.classList.add('recording');
+      btn.innerText = '⏹ Recording...';
+      document.getElementById('status').innerText = 'Recording in progress...';
+    }
+  }
+
+  function startVoiceInput(){
+    // user-initiated recognition; reuses the same object used during recording
+    if(!recognition){
+      recognition = initSpeechRecognition();
+    }
+    if(!recognition){
+      alert('Speech recognition not supported.');
+      return;
+    }
+    document.getElementById('status').innerText = 'Listening...';
+    recognition.start();
+    // auto-stop after 15 seconds so user doesn't have to
+    setTimeout(() => recognition.stop(), 15000);
+  }
+
+  // new helper to accept typed text replies
+  function submitTextAnswer(){
+    const val = document.getElementById('textAnswer').value.trim();
+    if(!val) return;
+    answers[index] = val;
+    document.getElementById('answerText').innerText = val;
+    document.getElementById('textAnswer').value = '';
+    document.getElementById('nextBtn').style.display = 'inline-block';
+    document.getElementById('status').innerText = 'Text answer recorded. Click Next to continue.';
+  }
+
+  function nextQuestion(){
+    // prefer any pre‑recorded answer (video, voice or text composer)
+    if(typeof answers[index] === 'undefined' || answers[index] === ''){
+      const text = document.getElementById('answerText').innerText;
+      if(text && text !== 'Listening...' && text !== 'Waiting for question...'){
+        answers[index] = text;
+      } else {
+        answers[index] = '(No answer provided)';
+      }
+    }
+    index++;
+    askQuestion();
+  }
+
+  async function submitForScoring(){
+    document.getElementById('questionText').innerText = 'Evaluating your responses...';
+    document.getElementById('recordBtn').disabled = true;
+    document.getElementById('voiceBtn').disabled = true;
+    document.getElementById('nextBtn').disabled = true;
+
+    try{
+      // Prepare violation details
+      const violationSummary = Object.keys(violationTypes)
+        .filter(key => violationTypes[key].count > 0)
+        .map(key => `${key}:${violationTypes[key].count}`)
+        .join('|');
+      
+      const res = await fetch('../api/score_video_answers.php', {
+        method: 'POST',
+        headers: {'Content-Type':'application/x-www-form-urlencoded'},
+        body: 'cid='+encodeURIComponent(cid)+'&answers='+encodeURIComponent(JSON.stringify(answers))+'&questions='+encodeURIComponent(JSON.stringify(questions))+'&strikes='+encodeURIComponent(strikes)+'&violations='+encodeURIComponent(violationSummary)
+      });
+      const result = await res.json();
+      sessionStorage.setItem('videoResult', JSON.stringify(result));
+      setTimeout(() => location.href = 'video_result.html', 1500);
+    }catch(e){
+      document.getElementById('questionText').innerText = 'Error submitting answers.';
+    }
+  }
+
+  function updateVoice(){
+    // currently no state to store; speak() will inspect the selector each time
+  }
+
+  function speak(t){
+    if(!('speechSynthesis' in window)) return;
+    const u = new SpeechSynthesisUtterance(t);
+    u.lang = 'en-US';
+    const sel = document.getElementById('voiceSelect')?.value;
+    if(sel){
+      const voices = window.speechSynthesis.getVoices();
+      if(sel==='male'){
+        const v = voices.find(v=>/male/i.test(v.name));
+        if(v) u.voice = v;
+      } else if(sel==='female'){
+        const v = voices.find(v=>/female/i.test(v.name));
+        if(v) u.voice = v;
+      }
+    }
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(u);
+  }
+  // ensure voices list is loaded
+  if('speechSynthesis' in window){
+    window.speechSynthesis.onvoiceschanged = ()=>{};
+  }
+
+  (async () => {
+    await initVideo();
+    loadFaceDetectionModel(); // Load face detection model in background
+    load();
+  })();
+</script>
+
+</body>
+</html>

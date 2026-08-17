@@ -1,0 +1,35 @@
+[2026-03-03 07:34:11] pdftotext_failed: cmd=pdftotext "C:\Xamp\htdocs\AI HR CHATBOT\ai_hr_bot\api/../uploads/1772519651_Tushar_Bali_2_Page_Resume_Updated_AI_2.pdf" "C:\Xamp\htdocs\AI HR CHATBOT\ai_hr_bot\api/../uploads/1772519651_Tushar_Bali_2_Page_Resume_Updated_AI_2.pdf.txt" 2>&1 status=1 out='pdftotext' is not recognized as an internal or external command,
+operable program or batch file.
+[2026-03-03 07:46:29] pdfparser_missing: smalot/pdfparser not installed
+[2026-03-03 07:46:29] conversion_failed: could not convert 1772520389_Tushar_Bali_2_Page_Resume_Updated_AI_2.pdf to text
+[2026-03-03 07:46:29] insert_ok: candidate_id=9 file=1772520389_Tushar_Bali_2_Page_Resume_Updated_AI_2.pdf
+[2026-03-04 12:29:05] pdfparser_missing: smalot/pdfparser not installed
+[2026-03-04 12:29:05] conversion_failed: could not convert 1772623745_Tushar_Bali_1_Page_Resume_Updated_AI.pdf to text
+[2026-03-04 12:29:05] insert_ok: candidate_id=1 file=1772623745_Tushar_Bali_1_Page_Resume_Updated_AI.pdf
+[2026-03-04 12:43:22] pdfparser_missing: smalot/pdfparser not installed
+[2026-03-04 12:43:22] conversion_failed: could not convert 1772624602_Tushar_Bali_1_Page_Resume_Updated_AI.pdf to text
+[2026-03-04 12:43:22] insert_ok: candidate_id=1 file=1772624602_Tushar_Bali_1_Page_Resume_Updated_AI.pdf hash=151c0af47f321567b830b395123ff4db1362da13756277a42e61cf356f24fa79 email=
+[2026-03-04 13:06:35] pdfparser_missing: smalot/pdfparser not installed
+[2026-03-04 13:06:35] conversion_failed: could not convert 1772625995_Tushar_Bali_1_Page_Resume_Updated_AI.pdf to text
+[2026-03-04 13:06:35] insert_ok: candidate_id=2 file=1772625995_Tushar_Bali_1_Page_Resume_Updated_AI.pdf hash=151c0af47f321567b830b395123ff4db1362da13756277a42e61cf356f24fa79 email=
+[2026-03-07 15:26:54] pdfparser_missing: smalot/pdfparser not installed
+[2026-03-07 15:26:54] conversion_failed: could not convert 1772893614_Tushar_Bali_Developer_Cover_Letter.pdf to text
+[2026-03-07 15:26:54] insert_ok: candidate_id=3 file=1772893614_Tushar_Bali_Developer_Cover_Letter.pdf hash=cd3a1b052244338848f9b3011a2b48b59191755caf0b197946f4cd66feab3857 email=
+[2026-03-07 15:49:18] pdfparser_missing: smalot/pdfparser not installed
+[2026-03-07 15:49:18] conversion_failed: could not convert 1772894958_Tushar_Bali_2_Page_Resume_Updated_AI__1_.pdf to text
+[2026-03-07 15:49:18] insert_ok: candidate_id=4 file=1772894958_Tushar_Bali_2_Page_Resume_Updated_AI__1_.pdf hash=34a09e28198d65f51d61fbee4848319722a019a98a158accc4373150e0140fad email=
+[2026-03-07 16:15:42] pdfparser_missing: smalot/pdfparser not installed
+[2026-03-07 16:15:42] conversion_failed: could not convert 1772896542_Tushar_Bali_2_Page_Resume_Updated_AI.pdf to text
+[2026-03-07 16:15:42] insert_ok: candidate_id=5 file=1772896542_Tushar_Bali_2_Page_Resume_Updated_AI.pdf hash=72a85ee86280c1fc31d7a12ec522218f0cfa35defd981c69b75566c6a378a7e3 email=
+[2026-03-07 16:18:26] pdfparser_missing: smalot/pdfparser not installed
+[2026-03-07 16:18:26] conversion_failed: could not convert 1772896706_Tushar_Bali__8_.pdf to text
+[2026-03-07 16:18:26] insert_ok: candidate_id=6 file=1772896706_Tushar_Bali__8_.pdf hash=fc72c7eb06b03a99ae586ff88b20dde0350ec338eb26879e89691cfb1d1809ca email=
+[2026-03-07 16:22:23] phpword_missing: phpoffice/phpword not installed
+[2026-03-07 16:22:23] conversion_failed: could not convert 1772896943_Tushar_Bali_2_Page_Resume_Updated_AI.docx to text
+[2026-03-07 16:22:23] insert_ok: candidate_id=7 file=1772896943_Tushar_Bali_2_Page_Resume_Updated_AI.docx hash=7b7ef9ecbb4a94adc749b54100e8733b18ede66bd9ae8f72338351946cf294ef email=
+[2026-03-07 16:28:36] phpword_missing: phpoffice/phpword not installed
+[2026-03-07 16:28:36] conversion_failed: could not convert 1772897316_Tushar_Bali_1_Page_Resume_Updated_AI.docx to text
+[2026-03-07 16:28:36] insert_ok: candidate_id=8 file=1772897316_Tushar_Bali_1_Page_Resume_Updated_AI.docx hash=af3d2fbb3d9d81f75476e33d41b21bef2a4a85d3b3d65476393e146fa3c56db7 email=
+[2026-03-07 16:35:20] pdfparser_missing: smalot/pdfparser not installed
+[2026-03-07 16:35:20] conversion_failed: could not convert 1772897720_ai_in_logistics_ppt.pdf__1_.pdf to text
+[2026-03-07 16:35:20] insert_ok: candidate_id=9 file=1772897720_ai_in_logistics_ppt.pdf__1_.pdf hash=efda0e8e3fafaa1b993350cd1c672b571c45fc8dea79d4792f440df3aff8022c email=
