@@ -1,0 +1,57 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { createClient as createServerClient } from "@/lib/supabase/server";
+import type { Candidate } from "@/lib/types/database";
+
+async function resolveClient(client?: SupabaseClient): Promise<SupabaseClient> {
+  if (client) return client;
+  return (await createServerClient()) as unknown as SupabaseClient;
+}
+
+export type LinkCandidateAuthResult =
+  | { outcome: "linked"; candidate: Candidate }
+  | { outcome: "already_linked"; candidate: Candidate }
+  | { outcome: "no_assessment_for_email" };
+
+/**
+ * Links the just-authenticated Supabase auth user to a `candidates` row by
+ * matching email (case-insensitive), but ONLY when that candidate already
+ * has at least one assessment assignment — this prevents an arbitrary
+ * magic-link signup from linking to (and thereby gaining read access to)
+ * an unrelated candidate's profile. Idempotent: a second login for an
+ * already-linked candidate just verifies the match.
+ */
+export async function linkCandidateAuth(authUserId: string, authEmail: string, client?: SupabaseClient): Promise<LinkCandidateAuthResult> {
+  const supabase = await resolveClient(client);
+
+  const { data: existingLink, error: existingLinkError } = await supabase
+    .from("candidates")
+    .select("*")
+    .eq("auth_user_id", authUserId)
+    .maybeSingle();
+  if (existingLinkError) throw existingLinkError;
+  if (existingLink) return { outcome: "already_linked", candidate: existingLink as Candidate };
+
+  // RLS (see migration 0006) only lets this SELECT see a candidate row when
+  // it's unlinked, the email matches this session, AND it already has at
+  // least one assessment assignment — so a non-null result here already
+  // proves eligibility; no separate application-layer count query needed
+  // (one would hit the same RLS gate anyway before linking is complete).
+  const { data: candidate, error: candidateError } = await supabase
+    .from("candidates")
+    .select("*")
+    .ilike("email", authEmail)
+    .is("auth_user_id", null)
+    .maybeSingle();
+  if (candidateError) throw candidateError;
+  if (!candidate) return { outcome: "no_assessment_for_email" };
+
+  const { data: linked, error: linkError } = await supabase
+    .from("candidates")
+    .update({ auth_user_id: authUserId })
+    .eq("id", candidate.id)
+    .select("*")
+    .single();
+  if (linkError) throw linkError;
+
+  return { outcome: "linked", candidate: linked as Candidate };
+}
