@@ -23,11 +23,12 @@ export function Topbar({ userName, userEmail, companyName }: TopbarProps) {
   }
 
   return (
-    <header className="flex h-16 shrink-0 items-center gap-4 border-b border-border bg-background/80 px-6 backdrop-blur">
-      <div className="relative w-full max-w-sm">
+    <header className="pt-safe flex h-16 shrink-0 items-center gap-4 border-b border-border bg-background/80 px-4 backdrop-blur md:px-6">
+      <div className="relative hidden w-full max-w-sm sm:block">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input placeholder="Search jobs, candidates…" className="pl-9" aria-label="Search" />
       </div>
+      <span className="text-sm font-semibold text-foreground sm:hidden">Recruiting OS</span>
 
       <div className="ml-auto flex items-center gap-2">
         <button

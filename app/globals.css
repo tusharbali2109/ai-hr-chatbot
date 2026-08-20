@@ -83,6 +83,28 @@ body {
   scrollbar-color: var(--border) transparent;
 }
 
+/* Safe-area utilities for the mobile bottom nav / sticky action bars —
+   env() resolves to real inset values only when viewport-fit=cover is set
+   (see app/layout.tsx's viewport export); falls back to 0 elsewhere, so
+   these are safe to apply unconditionally everywhere, not just iOS. */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* Bottom-sheet entrance — spring-like upward slide, used by MobileBottomNav's
+   "More" sheet and reusable anywhere else a mobile bottom sheet is built. */
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

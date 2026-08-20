@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
   Briefcase,
   Users,
@@ -10,6 +11,8 @@ import {
   HelpCircle,
   XCircle,
   Gavel,
+  Plus,
+  UserPlus,
 } from "lucide-react";
 import { getDashboardStats, getRecentApplications, getRecentActivity } from "@/lib/services/dashboard";
 import { createClient } from "@/lib/supabase/server";
@@ -19,6 +22,13 @@ import { CandidateTable, type CandidateRow } from "@/components/recruitment/Cand
 import { ActivityFeed, type ActivityEntry } from "@/components/recruitment/ActivityFeed";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PIPELINE_STAGES, type RecruitmentStage } from "@/lib/stages";
+
+function greeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
 
 export default async function DashboardPage() {
   const [stats, recentApplications, recentActivity, supabase] = await Promise.all([
@@ -59,10 +69,30 @@ export default async function DashboardPage() {
   }));
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-8">
+    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Recruitment Command Center</h1>
+        <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+          {greeting()} <span aria-hidden>👋</span>
+        </h1>
         <p className="mt-1 text-sm text-muted-foreground">A live view of your hiring pipeline.</p>
+      </div>
+
+      {/* Quick actions — the two highest-frequency actions, one tap away, thumb-reachable on mobile. */}
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:hidden">
+        <Link
+          href="/jobs/new"
+          className="flex items-center justify-center gap-2 rounded-[var(--radius-lg)] bg-accent px-4 py-3 text-sm font-medium text-accent-foreground shadow-[var(--shadow-soft)] active:scale-[0.98] transition-transform duration-[var(--duration-fast)]"
+        >
+          <Plus className="h-4 w-4" />
+          Create Job
+        </Link>
+        <Link
+          href="/candidates"
+          className="flex items-center justify-center gap-2 rounded-[var(--radius-lg)] border border-border bg-surface px-4 py-3 text-sm font-medium text-foreground active:scale-[0.98] transition-transform duration-[var(--duration-fast)]"
+        >
+          <UserPlus className="h-4 w-4" />
+          Add Candidate
+        </Link>
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-6">
