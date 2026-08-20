@@ -10,7 +10,14 @@ import { isAutomationEnabled } from "@/lib/communication/logic";
 import { sendAssessmentReminder } from "@/lib/communication/agent";
 
 const REMINDER_WINDOW_HOURS = 24;
-const REMINDER_LOOKAHEAD_MINUTES = 15; // run cadence tolerance
+// Vercel Hobby plan only allows once-daily cron schedules (see vercel.json),
+// not the every-15-minutes cadence this was originally tuned for — widened
+// to a full day so the one daily sweep still catches every deadline that
+// falls in the next ~24-48h window, instead of missing almost all of them
+// with a 15-minute slice. Reminders land less precisely at "24h before" as
+// a result (anywhere in that wider window), but idempotency (see below)
+// guarantees each assignment still only ever gets one reminder.
+const REMINDER_LOOKAHEAD_MINUTES = 24 * 60;
 
 /**
  * Scheduled sweep sending a 24h-before-deadline reminder for pending

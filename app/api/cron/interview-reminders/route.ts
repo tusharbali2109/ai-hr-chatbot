@@ -8,7 +8,17 @@ import { getCompany } from "@/lib/services/companies";
 import { isAutomationEnabled } from "@/lib/communication/logic";
 import { sendInterviewReminder } from "@/lib/communication/agent";
 
-const LOOKAHEAD_MINUTES = 15; // run cadence tolerance
+// Vercel Hobby plan only allows once-daily cron schedules (see vercel.json),
+// not the every-15-minutes cadence this was tuned for. Widened to a full
+// day so the 24h window is still reliably caught by one daily sweep — but
+// this means the "2h" window can no longer be a precise 2-hours-before
+// alert: with only one run a day, it now just fires whenever that day's
+// sweep happens to catch it, anywhere up to ~24h before the interview.
+// Genuinely can't do better without a finer-grained cron (Vercel Pro, or a
+// separate free cron service hitting this route more often). Idempotency
+// (reminder_24h_sent_at/reminder_2h_sent_at + email_messages' key) still
+// guarantees each interview only ever gets one reminder per window.
+const LOOKAHEAD_MINUTES = 24 * 60;
 
 /**
  * Scheduled sweep sending 24h/2h-before reminders for confirmed

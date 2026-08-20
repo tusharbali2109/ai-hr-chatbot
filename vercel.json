@@ -2,15 +2,15 @@
   "crons": [
     {
       "path": "/api/cron/assessment-expiration",
-      "schedule": "0 * * * *"
+      "schedule": "0 6 * * *"
     },
     {
       "path": "/api/cron/assessment-reminders",
-      "schedule": "*/15 * * * *"
+      "schedule": "10 6 * * *"
     },
     {
       "path": "/api/cron/interview-reminders",
-      "schedule": "*/15 * * * *"
+      "schedule": "20 6 * * *"
     }
   ]
 }
