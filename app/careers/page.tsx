@@ -4,6 +4,11 @@ import { createWebhookClient } from "@/lib/supabase/webhook-client";
 import { EmptyState } from "@/components/ui/EmptyState";
 
 export const metadata = { title: "Careers" };
+// Must render per-request, not at build time — a static build would bake in
+// whatever jobs were open the moment `npm run build` ran (and, on Vercel,
+// fail the build entirely if service-role env vars aren't present yet,
+// since build-time execution has no request context to defer to).
+export const dynamic = "force-dynamic";
 
 interface PublicJobRow {
   id: string;

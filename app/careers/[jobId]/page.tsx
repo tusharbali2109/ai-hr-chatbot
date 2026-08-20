@@ -5,6 +5,10 @@ import { createWebhookClient } from "@/lib/supabase/webhook-client";
 import { Badge } from "@/components/ui/Badge";
 import { ApplyForm } from "./ApplyForm";
 
+// Same reasoning as app/careers/page.tsx — must render per-request, not be
+// baked in at build time.
+export const dynamic = "force-dynamic";
+
 export default async function CareersJobPage({ params }: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await params;
   const supabase = createWebhookClient();
