@@ -105,6 +105,10 @@ export function PublishJobModal({
 
       {step === "checklist" && (
         <div className="flex flex-col gap-4">
+          <p className="rounded-[var(--radius-md)] border border-border bg-surface p-3 text-xs text-muted-foreground">
+            This job is already live on your own <span className="font-medium text-foreground">Careers page</span> — no publishing needed for that. The platforms below are for posting out to external job boards.
+          </p>
+
           {jobErrors.length > 0 && (
             <div className="rounded-[var(--radius-md)] border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
               <p className="font-medium">This job can&apos;t be published yet:</p>
@@ -255,10 +259,13 @@ function ResultRow({ result, onRetry }: { result: PublishResult; onRetry: () => 
           <p className="text-xs text-muted-foreground">
             {isPublished ? "Published" : result.error ?? "Publishing failed"}
           </p>
-          {isPublished && result.externalUrl && (
+          {isPublished && result.externalUrl && result.platform !== "mock" && (
             <a href={result.externalUrl} target="_blank" rel="noreferrer" className="text-xs text-accent hover:underline">
               View posting
             </a>
+          )}
+          {isPublished && result.platform === "mock" && (
+            <span className="text-xs text-muted-foreground">Simulated posting — no real URL (see Careers page for the real listing).</span>
           )}
         </div>
       </div>

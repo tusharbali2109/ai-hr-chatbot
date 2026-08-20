@@ -9,13 +9,16 @@
 -- and candidates get scoped RLS access to their own browser interview rows
 -- (they previously had none at all — every existing policy on these four
 -- tables is recruiter/company-scoped only).
+--
+-- Written idempotently (drop-if-exists / if-not-exists guards throughout) so
+-- it's safe to re-run after a partial prior application.
 -- ---------------------------------------------------------------------------
 
-alter table interviews drop constraint interviews_provider_check;
+alter table interviews drop constraint if exists interviews_provider_check;
 alter table interviews add constraint interviews_provider_check
   check (provider in ('mock', 'twilio', 'browser'));
 
-alter table interview_events drop constraint interview_events_event_type_check;
+alter table interview_events drop constraint if exists interview_events_event_type_check;
 alter table interview_events add constraint interview_events_event_type_check
   check (event_type in (
     'CALL_STARTED', 'AI_INTRO', 'CONSENT_RECEIVED', 'CONSENT_DECLINED', 'QUESTION_ASKED',
@@ -47,17 +50,20 @@ $$ language sql stable security definer set search_path = public;
 -- AssessmentPublic) — this grants row access, not a promise every column is
 -- safe to render.
 -- ---------------------------------------------------------------------------
+drop policy if exists "Candidates can view their own browser interview" on interviews;
 create policy "Candidates can view their own browser interview" on interviews
   for select using (
     provider = 'browser'
     and application_id in (select id from applications where candidate_id = candidate_id_for_auth())
   );
+drop policy if exists "Candidates can update their own browser interview" on interviews;
 create policy "Candidates can update their own browser interview" on interviews
   for update using (
     provider = 'browser'
     and application_id in (select id from applications where candidate_id = candidate_id_for_auth())
   );
 
+drop policy if exists "Candidates can view questions for their own browser interview" on interview_questions;
 create policy "Candidates can view questions for their own browser interview" on interview_questions
   for select using (
     interview_id in (
@@ -66,6 +72,7 @@ create policy "Candidates can view questions for their own browser interview" on
       where i.provider = 'browser' and a.candidate_id = candidate_id_for_auth()
     )
   );
+drop policy if exists "Candidates can create followup questions for their own browser interview" on interview_questions;
 create policy "Candidates can create followup questions for their own browser interview" on interview_questions
   for insert with check (
     interview_id in (
@@ -75,6 +82,7 @@ create policy "Candidates can create followup questions for their own browser in
     )
   );
 
+drop policy if exists "Candidates can view answers for their own browser interview" on interview_answers;
 create policy "Candidates can view answers for their own browser interview" on interview_answers
   for select using (
     interview_id in (
@@ -83,6 +91,7 @@ create policy "Candidates can view answers for their own browser interview" on i
       where i.provider = 'browser' and a.candidate_id = candidate_id_for_auth()
     )
   );
+drop policy if exists "Candidates can submit answers for their own browser interview" on interview_answers;
 create policy "Candidates can submit answers for their own browser interview" on interview_answers
   for insert with check (
     interview_id in (
@@ -92,6 +101,7 @@ create policy "Candidates can submit answers for their own browser interview" on
     )
   );
 
+drop policy if exists "Candidates can view events for their own browser interview" on interview_events;
 create policy "Candidates can view events for their own browser interview" on interview_events
   for select using (
     interview_id in (
@@ -100,6 +110,7 @@ create policy "Candidates can view events for their own browser interview" on in
       where i.provider = 'browser' and a.candidate_id = candidate_id_for_auth()
     )
   );
+drop policy if exists "Candidates can create events for their own browser interview" on interview_events;
 create policy "Candidates can create events for their own browser interview" on interview_events
   for insert with check (
     interview_id in (

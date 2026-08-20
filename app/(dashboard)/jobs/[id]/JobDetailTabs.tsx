@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, MapPin, Briefcase, Calendar, Send, Sparkles } from "lucide-react";
+import { ArrowLeft, MapPin, Briefcase, Calendar, Send, Sparkles, ExternalLink } from "lucide-react";
 import type { Job, JobPosting } from "@/lib/types/database";
 import type { ApplicationWithRelations } from "@/lib/services/applications";
 import { PIPELINE_STAGES, type RecruitmentStage } from "@/lib/stages";
@@ -121,6 +121,18 @@ export function JobDetailTabs({
             <Badge tone={JD_STATUS_TONE[job.jd_status]}>{JD_STATUS_LABEL[job.jd_status]}</Badge>
           </div>
           <div className="flex items-center gap-2">
+            {job.status === "open" && job.jd_status === "APPROVED" && (
+              <Link
+                href={`/careers/${job.id}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-surface-elevated"
+                title="This job's live public listing on your own Careers page"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                Careers Page
+              </Link>
+            )}
             <Button
               size="sm"
               variant="secondary"

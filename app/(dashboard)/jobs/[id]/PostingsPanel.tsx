@@ -78,10 +78,13 @@ export function PostingsPanel({ jobId, postings, onSynced }: { jobId: string; po
                   {posting.platform === "mock" && <Badge tone="warning">MOCK</Badge>}
                 </div>
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-                  {posting.external_url && (
+                  {posting.external_url && posting.platform !== "mock" && (
                     <a href={posting.external_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline">
                       View posting <ExternalLink className="h-3 w-3" />
                     </a>
+                  )}
+                  {posting.external_url && posting.platform === "mock" && (
+                    <span>Simulated posting — no real URL</span>
                   )}
                   <span>Last synced: {relativeTime(posting.last_synced_at)}</span>
                   {posting.last_error && <span className="text-danger">{posting.last_error}</span>}

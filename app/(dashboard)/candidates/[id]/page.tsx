@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Mail, Phone, MapPin, Link2, Globe, FileText, CheckCircle2, XCircle, HelpCircle } from "lucide-react";
-import { getCandidate, listCandidateApplications } from "@/lib/services/candidates";
+import { getCandidate, getResumeSignedUrl, listCandidateApplications } from "@/lib/services/candidates";
 import { listStageHistory } from "@/lib/services/applications";
 import { getLatestScreening } from "@/lib/services/screening";
 import { getLatestInterview } from "@/lib/services/interviews";
@@ -39,6 +39,8 @@ export default async function CandidateDetailPage({ params }: PageProps<"/candid
 
   const candidate = await getCandidate(id);
   if (!candidate) notFound();
+
+  const resumeHref = await getResumeSignedUrl(candidate.resume_url);
 
   const applications = await listCandidateApplications(id);
   const primaryApplication = applications[0] ?? null;
@@ -240,7 +242,7 @@ export default async function CandidateDetailPage({ params }: PageProps<"/candid
               <Field icon={MapPin} label="Location" value={candidate.location ?? "Not specified"} />
               <Field icon={Link2} label="LinkedIn" value={candidate.linkedin_url} href={candidate.linkedin_url ?? undefined} />
               <Field icon={Globe} label="Portfolio" value={candidate.portfolio_url} href={candidate.portfolio_url ?? undefined} />
-              <Field icon={FileText} label="Resume" value={candidate.resume_url ? "View resume" : "Not uploaded"} href={candidate.resume_url ?? undefined} />
+              <Field icon={FileText} label="Resume" value={resumeHref ? "View resume" : "Not uploaded"} href={resumeHref ?? undefined} />
             </dl>
           </Section>
 
