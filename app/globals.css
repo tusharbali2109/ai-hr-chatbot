@@ -1,28 +1,33 @@
 @import "tailwindcss";
 
 :root {
-  --background: #0a0b0d;
-  --surface: #121317;
-  --surface-elevated: #191b20;
-  --border: #26282e;
-  --border-subtle: #1c1e23;
-  --foreground: #eceef1;
-  --muted-foreground: #8b8f98;
-  --accent: #7c6cf6;
-  --accent-hover: #8f81f8;
+  /* Light, white, classy theme — palette sourced from the leave-balance /
+     calendar reference design: near-white lavender-tinted background, pure
+     white cards, indigo accent for the selected day, amber for festive
+     leave, green for available days / approved status, soft red for
+     holidays. */
+  --background: #f5f5fb;
+  --surface: #ffffff;
+  --surface-elevated: #f8f8fc;
+  --border: #ececf5;
+  --border-subtle: #f1f1f8;
+  --foreground: #17181f;
+  --muted-foreground: #6b7280;
+  --accent: #6d5ce8;
+  --accent-hover: #5c4cd6;
   --accent-foreground: #ffffff;
-  --success: #34d399;
-  --warning: #fbbf24;
-  --danger: #f87171;
-  --info: #60a5fa;
+  --success: #17a672;
+  --warning: #f5a623;
+  --danger: #ef4770;
+  --info: #4f8ef7;
 
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
   --radius-xl: 20px;
 
-  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px -8px rgba(0, 0, 0, 0.5);
-  --shadow-elevated: 0 4px 12px rgba(0, 0, 0, 0.35), 0 16px 40px -12px rgba(0, 0, 0, 0.6);
+  --shadow-soft: 0 1px 2px rgba(23, 24, 31, 0.04), 0 8px 24px -8px rgba(23, 24, 31, 0.1);
+  --shadow-elevated: 0 4px 12px rgba(23, 24, 31, 0.06), 0 16px 40px -12px rgba(23, 24, 31, 0.14);
 
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --duration-fast: 120ms;
@@ -60,7 +65,7 @@
 }
 
 html {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 body {

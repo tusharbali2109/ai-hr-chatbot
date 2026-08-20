@@ -3,6 +3,7 @@ import { verifyWebhookRequest } from "@/lib/webhooks/signature";
 import { createWebhookClient } from "@/lib/supabase/webhook-client";
 import { isEventProcessed, recordEvent, markEventProcessed, markEventFailed } from "@/lib/services/webhooks";
 import { ingestApplicant } from "@/lib/services/ingestion";
+import { maybeAutoScreenApplication } from "@/lib/screening/auto-trigger";
 
 /**
  * Generic webhook receiver for every job board connector. Outside
@@ -71,7 +72,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ pla
   });
 
   try {
-    await ingestApplicant(body.applicant, platform, posting.job_id, supabase);
+    const result = await ingestApplicant(body.applicant, platform, posting.job_id, supabase);
+    if (result.outcome === "created" && result.applicationId) {
+      await maybeAutoScreenApplication(result.applicationId, posting.job_id, supabase);
+    }
     await markEventProcessed(supabase, event.id);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown ingestion error.";

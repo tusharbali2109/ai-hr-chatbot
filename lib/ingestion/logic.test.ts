@@ -27,6 +27,12 @@ describe("normalizeIngestPayload", () => {
     expect(result.source_platform).toBe("mock");
   });
 
+  it("maps the public careers site to the career_site source, not job_board", () => {
+    const result = normalizeIngestPayload({ name: "Priya Nair", email: "priya@example.com" }, "careers_site");
+    expect(result.source).toBe("career_site");
+    expect(result.source_platform).toBe("careers_site");
+  });
+
   it("normalizes platform B's field shape (name, email_address, mobile, cv_url)", () => {
     const result = normalizeIngestPayload(
       {

@@ -10,6 +10,8 @@ import type {
   EvaluateInterviewInput,
   GenerateAssessmentInput,
   EvaluateAssessmentAnswerInput,
+  ReviewOpenEndedSubmissionInput,
+  EvaluateWorkdayTaskInput,
 } from "@/lib/ai/provider";
 import {
   RequirementSchema,
@@ -22,6 +24,9 @@ import {
   InterviewEvaluationSchema,
   AssessmentGenerationSchema,
   AssessmentQuestionEvaluationResultSchema,
+  OpenEndedReviewSchema,
+  WorkdayTaskEvaluationSchema,
+  ResumeCandidateExtractionSchema,
   requirementJsonSchema,
   jdJsonSchema,
   candidateEvaluationJsonSchema,
@@ -32,6 +37,9 @@ import {
   interviewEvaluationJsonSchema,
   assessmentGenerationJsonSchema,
   assessmentQuestionEvaluationJsonSchema,
+  openEndedReviewJsonSchema,
+  workdayTaskEvaluationJsonSchema,
+  resumeCandidateExtractionJsonSchema,
   type RequirementExtraction,
   type JDGeneration,
   type CandidateEvaluation,
@@ -42,6 +50,9 @@ import {
   type InterviewEvaluation,
   type AssessmentGeneration,
   type AssessmentQuestionEvaluationResult,
+  type OpenEndedReview,
+  type WorkdayTaskEvaluation,
+  type ResumeCandidateExtraction,
 } from "@/lib/ai/schemas";
 
 export const MODEL = "claude-opus-5";
@@ -296,6 +307,61 @@ function buildAssessmentQuestionEvaluationUserPrompt(input: EvaluateAssessmentAn
     .join("\n\n");
 }
 
+const OPEN_ENDED_REVIEW_SYSTEM_PROMPT = `You are the Assessment Review Agent, producing a briefing document for a human interviewer about ONE candidate's completed open-ended task submission. This is NOT a pass/fail score and you must never invent one — the recruiter reads your output before the interview to decide what to probe.
+
+Rules:
+- Ground every point in the actual submission text — never invent content the candidate didn't write, and never assume the brief was followed unless the submission demonstrates it.
+- strengths/weaknesses/gaps must cite something specific from the submission, not generic advice that could apply to any candidate.
+- interviewer_questions must be specific to what THIS candidate actually submitted — reference their actual choices, approach, or claims, not boilerplate interview questions.
+- stuck_points should identify places where the interviewer, by asking the candidate to explain or extend a specific part live, would quickly reveal whether they truly understand what they submitted — this is the primary tool for verifying the work is genuinely theirs.
+- authenticity_notes must stay strictly observational (e.g. "the architecture section uses advanced terminology not reflected in the implementation" is fine; "this was clearly copied" is not) — you are flagging what to probe, never issuing a verdict. Leave it as an empty string if nothing stands out as worth a closer look.
+- If the submission barely engages with the brief at all, say so plainly in gaps rather than padding out strengths.`;
+
+function buildOpenEndedReviewUserPrompt(input: ReviewOpenEndedSubmissionInput): string {
+  return [
+    `Job: ${input.jobTitle}`,
+    `Job description:\n${input.jobDescription}`,
+    `Task brief given to the candidate:\n"""\n${input.briefText}\n"""`,
+    `Candidate's submission:\n"""\n${input.submissionText || "(no readable content extracted from the submitted file)"}\n"""`,
+  ].join("\n\n");
+}
+
+const WORKDAY_TASK_EVALUATION_SYSTEM_PROMPT = `You are the Workday Evaluation Agent, grading exactly ONE candidate response to ONE Digital Workday task — a realistic work-sample scenario (inbox triage, customer escalation, a scoping decision, a reflection, etc.), not a trivia question.
+
+Rules:
+- Score based on the rubric dimensions given to you and how well the response addresses the specific scenario and deliverable — never a generic writing-quality score.
+- A long response is not automatically a good one, and a short response is not automatically a bad one — judge substance: does it show real prioritization/reasoning/judgment for THIS scenario, or is it generic filler that could answer any prompt?
+- evidence must quote or closely paraphrase the specific part of the response that justifies the score.
+- feedback should be concrete and specific enough that a recruiter could act on it without re-reading the raw response.
+- The candidate's stated assumptions and AI-usage disclosure are context, not separately scored fields to reward for merely being non-empty — weigh them only insofar as they reflect the quality of the candidate's actual reasoning in this task.
+- If the response does not meaningfully engage with the scenario at all (blank, off-topic, or clearly copy-pasted boilerplate), score low with HIGH confidence — that is unambiguous.
+- Set confidence to LOW whenever the response is genuinely hard to judge with certainty — this routes the case to human review rather than silently guessing.
+- This is a single task in isolation — do not produce a whole-session score or ADVANCE/REJECT recommendation; that is computed separately from every task's result.`;
+
+function buildWorkdayTaskEvaluationUserPrompt(input: EvaluateWorkdayTaskInput): string {
+  return [
+    `Job: ${input.jobTitle}`,
+    `Task type: ${input.taskType}`,
+    `Task: ${input.taskTitle}`,
+    `Scenario given to the candidate:\n${input.scenario}`,
+    `Expected deliverable: ${input.deliverable}`,
+    `Rubric dimensions: ${input.rubric.join(", ") || "General quality of reasoning and communication"}`,
+    `Candidate's response:\n"""\n${input.candidateResponse || "(no response submitted)"}\n"""`,
+    input.candidateAssumptions ? `Candidate's stated assumptions:\n"""\n${input.candidateAssumptions}\n"""` : "",
+    input.candidateAiDisclosure ? `Candidate's AI-usage disclosure:\n"""\n${input.candidateAiDisclosure}\n"""` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+const RESUME_CANDIDATE_EXTRACTION_SYSTEM_PROMPT = `You are the Candidate Intake Agent, extracting contact details from a resume so a recruiter doesn't have to type them by hand.
+
+Rules:
+- Extract ONLY information literally present in the resume text — never infer, guess, or fabricate a name, email, phone, location, or URL that isn't actually written there.
+- name and email are required fields — use an empty string "" if genuinely not found (never invent a placeholder).
+- phone/location/linkedin_url/portfolio_url are null if not found — never guess a format or fill in something plausible-looking.
+- If multiple emails or phone numbers appear, prefer the one that reads as the candidate's primary/personal contact (not a reference's or previous employer's).`;
+
 export const anthropicProvider: AIProvider = {
   async generateStructuredRequirement(rawRequirement, overrides: StructuredInputOverrides) {
     const overrideLines = Object.entries(overrides)
@@ -377,5 +443,26 @@ export const anthropicProvider: AIProvider = {
     return callStructured(ASSESSMENT_QUESTION_EVALUATION_SYSTEM_PROMPT, userPrompt, assessmentQuestionEvaluationJsonSchema, (raw) =>
       AssessmentQuestionEvaluationResultSchema.parse(raw)
     ) as Promise<AssessmentQuestionEvaluationResult>;
+  },
+
+  async reviewOpenEndedSubmission(input) {
+    const userPrompt = buildOpenEndedReviewUserPrompt(input);
+    return callStructured(OPEN_ENDED_REVIEW_SYSTEM_PROMPT, userPrompt, openEndedReviewJsonSchema, (raw) =>
+      OpenEndedReviewSchema.parse(raw)
+    ) as Promise<OpenEndedReview>;
+  },
+
+  async evaluateWorkdayTask(input) {
+    const userPrompt = buildWorkdayTaskEvaluationUserPrompt(input);
+    return callStructured(WORKDAY_TASK_EVALUATION_SYSTEM_PROMPT, userPrompt, workdayTaskEvaluationJsonSchema, (raw) =>
+      WorkdayTaskEvaluationSchema.parse(raw)
+    ) as Promise<WorkdayTaskEvaluation>;
+  },
+
+  async extractCandidateFromResume(resumeText) {
+    const userPrompt = `Resume text:\n"""\n${resumeText}\n"""`;
+    return callStructured(RESUME_CANDIDATE_EXTRACTION_SYSTEM_PROMPT, userPrompt, resumeCandidateExtractionJsonSchema, (raw) =>
+      ResumeCandidateExtractionSchema.parse(raw)
+    ) as Promise<ResumeCandidateExtraction>;
   },
 };

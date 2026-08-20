@@ -27,6 +27,7 @@ function firstString(raw: RawApplicantPayload, keys: string[]): string | null {
 function sourceForPlatform(platform: string): ApplicationSource {
   const normalized = platform.toLowerCase();
   if (normalized === "linkedin") return "linkedin";
+  if (normalized === "careers_site" || normalized === "manual") return "career_site";
   return "job_board";
 }
 

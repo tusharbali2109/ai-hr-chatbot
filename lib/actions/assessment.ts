@@ -2,20 +2,49 @@
 
 import { revalidatePath } from "next/cache";
 import { generateAssessment, approveAssessment, createAssignment } from "@/lib/assessment/agent";
+import { generateOpenEndedReview } from "@/lib/assessment/open-ended-review-agent";
 import { getAuthedCompanyId, assertJobOwnership } from "@/lib/services/jd";
 import { getApplication, updateApplicationStage } from "@/lib/services/applications";
+import { createClient } from "@/lib/supabase/server";
 import {
   getAssessment,
+  getAssignment,
   upsertAssessmentQuestion,
   deleteAssessmentQuestion,
   reorderAssessmentQuestions,
   updateAssessmentMeta,
+  createOpenEndedAssessment,
+  saveOpenEndedSubmission,
   type UpsertQuestionInput,
   type UpdateAssessmentMetaInput,
 } from "@/lib/services/assessments";
 import type { Assessment, AssessmentQuestion } from "@/lib/types/database";
 import type { RecruitmentStage } from "@/lib/stages";
 import type { DeadlineConfig } from "@/lib/assessment/logic";
+
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+/**
+ * Dynamic import, not a static one — lib/files/text-extraction.ts pulls in
+ * pdf-parse (which wraps pdfjs-dist), and a static import from a "use
+ * server" action file gets pulled into Next's action-browser client
+ * reference bundle even though it only ever executes server-side, which
+ * broke pdfjs-dist's internals with "Object.defineProperty called on
+ * non-object" the moment any client component referenced this file. The
+ * dynamic import keeps it out of that bundle entirely.
+ */
+async function readUploadedFile(file: File): Promise<{ buffer: Buffer; text: string }> {
+  if (file.size > MAX_UPLOAD_BYTES) throw new Error("File exceeds the 10MB limit.");
+  const { extractTextFromFile } = await import("@/lib/files/text-extraction");
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const text = await extractTextFromFile(buffer, file.name, file.type);
+  if (!text) throw new Error("Couldn't read any text from this file — try a different format (PDF, DOCX, or plain text).");
+  return { buffer, text };
+}
+
+function safeFileName(name: string): string {
+  return name.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
 
 /** Builder edits are only allowed while the assessment is still DRAFT —
  * once READY (and especially once assignments exist), spec §26 requires a
@@ -122,4 +151,85 @@ export async function overrideAssessmentDecisionAction(
   revalidatePath(`/jobs/${jobId}`);
   revalidatePath("/candidates");
   revalidatePath(`/candidates/${application.candidate_id}`);
+}
+
+/** Creates an OPEN_ENDED assessment straight from a recruiter-uploaded
+ * brief file (PDF/DOCX/text) — no question builder, no DRAFT review step.
+ * Starts at READY immediately so it can be assigned via the existing
+ * assignAssessmentAction unchanged. */
+export async function createOpenEndedAssessmentAction(jobId: string, title: string, formData: FormData): Promise<{ assessmentId: string }> {
+  if (!title.trim()) throw new Error("Give this assessment a title.");
+
+  const { companyId } = await getAuthedCompanyId();
+  await assertJobOwnership(jobId, companyId);
+
+  const file = formData.get("file");
+  if (!(file instanceof File)) throw new Error("A brief file is required.");
+  const { buffer, text } = await readUploadedFile(file);
+
+  const supabase = await createClient();
+  const path = `briefs/${jobId}/${Date.now()}_${safeFileName(file.name)}`;
+  const { error: uploadError } = await supabase.storage.from("recruiter-uploads").upload(path, buffer, { contentType: file.type, upsert: true });
+  if (uploadError) throw uploadError;
+
+  const assessment = await createOpenEndedAssessment({ jobId, createdBy: null, title: title.trim(), briefFilePath: path, briefText: text }, supabase);
+
+  revalidatePath(`/jobs/${jobId}`);
+  revalidatePath("/assessments");
+  return { assessmentId: assessment.id };
+}
+
+/** Recruiter uploads the candidate's completed work (received outside the
+ * platform) for an open-ended assignment, then immediately generates the
+ * AI review — one action, matching this app's zero-manual-work automation
+ * elsewhere. Never touches application stage/score: this is advisory
+ * content for the interviewer, not a gating decision. */
+export async function uploadOpenEndedSubmissionAction(assignmentId: string, formData: FormData): Promise<{ reviewGenerated: boolean; error?: string }> {
+  const assignment = await getAssignment(assignmentId);
+  if (!assignment) throw new Error("Assignment not found.");
+
+  const application = await getApplication(assignment.application_id);
+  if (!application) throw new Error("Application not found.");
+
+  const { companyId } = await getAuthedCompanyId();
+  await assertJobOwnership(application.job_id, companyId);
+
+  const file = formData.get("file");
+  if (!(file instanceof File)) throw new Error("A submission file is required.");
+  const { buffer, text } = await readUploadedFile(file);
+
+  const supabase = await createClient();
+  const path = `submissions/${assignmentId}/${Date.now()}_${safeFileName(file.name)}`;
+  const { error: uploadError } = await supabase.storage.from("recruiter-uploads").upload(path, buffer, { contentType: file.type, upsert: true });
+  if (uploadError) throw uploadError;
+
+  await saveOpenEndedSubmission(assignmentId, { filePath: path, text }, supabase);
+
+  const result = await generateOpenEndedReview(assignmentId, supabase);
+
+  revalidatePath(`/jobs/${application.job_id}`);
+  revalidatePath(`/candidates/${application.candidate_id}`);
+
+  return { reviewGenerated: result.status === "COMPLETED", error: result.error };
+}
+
+/** Regenerates the AI review for an already-uploaded submission (e.g. after
+ * a bad first pass) without re-uploading the file. */
+export async function regenerateOpenEndedReviewAction(assignmentId: string): Promise<{ reviewGenerated: boolean; error?: string }> {
+  const assignment = await getAssignment(assignmentId);
+  if (!assignment) throw new Error("Assignment not found.");
+
+  const application = await getApplication(assignment.application_id);
+  if (!application) throw new Error("Application not found.");
+
+  const { companyId } = await getAuthedCompanyId();
+  await assertJobOwnership(application.job_id, companyId);
+
+  const supabase = await createClient();
+  const result = await generateOpenEndedReview(assignmentId, supabase);
+
+  revalidatePath(`/jobs/${application.job_id}`);
+  revalidatePath(`/candidates/${application.candidate_id}`);
+
+  return { reviewGenerated: result.status === "COMPLETED", error: result.error };
 }

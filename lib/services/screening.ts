@@ -61,6 +61,7 @@ export interface CreateScreeningRequirementInput {
 }
 
 export interface CreateScreeningInput {
+  client?: SupabaseClient;
   applicationId: string;
   agentRunId: string | null;
   jdVersionId: string | null;
@@ -82,7 +83,7 @@ export interface CreateScreeningInput {
 /** Never overwrites history — flips the prior "latest" row, inserts a new
  * versioned screening + its requirement rows in one call. */
 export async function createScreening(input: CreateScreeningInput): Promise<ScreeningWithRequirements> {
-  const supabase = await createClient();
+  const supabase = input.client ?? (await createClient());
 
   const { data: latest, error: latestError } = await supabase
     .from("screenings")

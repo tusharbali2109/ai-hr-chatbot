@@ -10,6 +10,9 @@ import type {
   InterviewEvaluation,
   AssessmentGeneration,
   AssessmentQuestionEvaluationResult,
+  OpenEndedReview,
+  WorkdayTaskEvaluation,
+  ResumeCandidateExtraction,
 } from "@/lib/ai/schemas";
 
 export interface StructuredInputOverrides {
@@ -113,6 +116,25 @@ export interface EvaluateAssessmentAnswerInput {
   candidateAnswer: string;
 }
 
+export interface ReviewOpenEndedSubmissionInput {
+  jobTitle: string;
+  jobDescription: string;
+  briefText: string;
+  submissionText: string;
+}
+
+export interface EvaluateWorkdayTaskInput {
+  jobTitle: string;
+  taskType: string;
+  taskTitle: string;
+  scenario: string;
+  deliverable: string;
+  rubric: string[];
+  candidateResponse: string;
+  candidateAssumptions: string;
+  candidateAiDisclosure: string;
+}
+
 export interface AIProvider {
   generateStructuredRequirement(rawRequirement: string, overrides: StructuredInputOverrides): Promise<RequirementExtraction>;
   generateJD(requirement: RequirementExtraction): Promise<JDGeneration>;
@@ -125,4 +147,7 @@ export interface AIProvider {
   evaluateInterview(input: EvaluateInterviewInput): Promise<InterviewEvaluation>;
   generateAssessment(input: GenerateAssessmentInput): Promise<AssessmentGeneration>;
   evaluateAssessmentAnswer(input: EvaluateAssessmentAnswerInput): Promise<AssessmentQuestionEvaluationResult>;
+  reviewOpenEndedSubmission(input: ReviewOpenEndedSubmissionInput): Promise<OpenEndedReview>;
+  evaluateWorkdayTask(input: EvaluateWorkdayTaskInput): Promise<WorkdayTaskEvaluation>;
+  extractCandidateFromResume(resumeText: string): Promise<ResumeCandidateExtraction>;
 }

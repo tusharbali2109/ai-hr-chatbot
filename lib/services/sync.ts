@@ -6,6 +6,7 @@ import { RateLimitError } from "@/lib/jobboards/connectors/mock";
 import { ingestApplicant } from "@/lib/services/ingestion";
 import { getAuthedCompanyId, assertJobOwnership } from "@/lib/services/jd";
 import { updateJobPostingSync } from "@/lib/services/jobboards";
+import { maybeAutoScreenApplication } from "@/lib/screening/auto-trigger";
 import type { JobPosting } from "@/lib/types/database";
 import type { ApplicationsPage } from "@/lib/jobboards/connector";
 
@@ -75,9 +76,14 @@ export async function syncJobPostingApplications(jobPostingId: string): Promise<
 
     for (const raw of page.applications) {
       try {
-        const ingestResult = await ingestApplicant(raw, jobPosting.platform, jobPosting.job_id);
+        const ingestResult = await ingestApplicant(raw, jobPosting.platform, jobPosting.job_id, supabase);
         result.imported += 1;
-        if (ingestResult.outcome === "created") result.newApplications += 1;
+        if (ingestResult.outcome === "created") {
+          result.newApplications += 1;
+          if (ingestResult.applicationId) {
+            await maybeAutoScreenApplication(ingestResult.applicationId, jobPosting.job_id, supabase);
+          }
+        }
       } catch (err) {
         result.failed += 1;
         result.errors.push(err instanceof Error ? err.message : "Unknown ingestion error.");

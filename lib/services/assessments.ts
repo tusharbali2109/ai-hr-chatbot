@@ -14,6 +14,7 @@ import type {
   AssessmentStatus,
   AssessmentRecommendation,
   AssignmentStatus,
+  OpenEndedReviewResult,
 } from "@/lib/types/database";
 import type { DeadlineConfig } from "@/lib/assessment/logic";
 
@@ -101,6 +102,71 @@ export async function createAssessmentVersion(input: CreateAssessmentInput, clie
     );
     if (qError) throw qError;
   }
+
+  return assessment as Assessment;
+}
+
+export interface CreateOpenEndedAssessmentInput {
+  jobId: string;
+  createdBy: string | null;
+  title: string;
+  briefFilePath: string;
+  briefText: string;
+}
+
+/**
+ * The open-ended counterpart to createAssessmentVersion: no AI-generated
+ * questions, no builder/DRAFT review step — the recruiter's uploaded brief
+ * IS the finished assessment, so this starts straight at READY, exactly the
+ * status createAssignment (lib/assessment/agent.ts) already requires before
+ * it can be assigned/emailed to a candidate. Everything downstream
+ * (assignment creation, invitation email, automation rules) is shared with
+ * structured assessments unchanged.
+ */
+export async function createOpenEndedAssessment(input: CreateOpenEndedAssessmentInput, client?: SupabaseClient): Promise<Assessment> {
+  const supabase = await resolveClient(client);
+
+  const { data: latest, error: latestError } = await supabase
+    .from("assessments")
+    .select("assessment_version")
+    .eq("job_id", input.jobId)
+    .order("assessment_version", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (latestError) throw latestError;
+
+  const nextVersion = computeNextVersionNumber(latest?.assessment_version);
+
+  const { error: unflagError } = await supabase
+    .from("assessments")
+    .update({ is_latest: false })
+    .eq("job_id", input.jobId)
+    .eq("is_latest", true);
+  if (unflagError) throw unflagError;
+
+  const { data: assessment, error } = await supabase
+    .from("assessments")
+    .insert({
+      job_id: input.jobId,
+      created_by: input.createdBy,
+      title: input.title,
+      description: "Open-ended task — see the attached brief for full details.",
+      instructions: "Complete the task described in the brief and return your work to the recruiter.",
+      type: "CUSTOM",
+      duration_minutes: null,
+      passing_score: 0,
+      status: "READY",
+      assessment_version: nextVersion,
+      is_latest: true,
+      deadline_unit: "DAYS",
+      deadline_value: 7,
+      assessment_type: "OPEN_ENDED",
+      brief_file_path: input.briefFilePath,
+      brief_text: input.briefText,
+    })
+    .select("*")
+    .single();
+  if (error) throw error;
 
   return assessment as Assessment;
 }
@@ -345,6 +411,32 @@ export async function updateAssignmentStatus(
 ): Promise<void> {
   const supabase = await resolveClient(client);
   const { error } = await supabase.from("assessment_assignments").update(fields).eq("id", assignmentId);
+  if (error) throw error;
+}
+
+/** Records the recruiter-uploaded completed submission for an open-ended
+ * assignment (received outside the platform) — separate from
+ * updateAssignmentStatus/lockAnswersAsSubmitted, which govern the
+ * structured in-platform answer flow. */
+export async function saveOpenEndedSubmission(
+  assignmentId: string,
+  fields: { filePath: string; text: string },
+  client?: SupabaseClient
+): Promise<void> {
+  const supabase = await resolveClient(client);
+  const { error } = await supabase
+    .from("assessment_assignments")
+    .update({ submission_file_path: fields.filePath, submission_text: fields.text })
+    .eq("id", assignmentId);
+  if (error) throw error;
+}
+
+export async function saveOpenEndedReview(assignmentId: string, review: OpenEndedReviewResult, client?: SupabaseClient): Promise<void> {
+  const supabase = await resolveClient(client);
+  const { error } = await supabase
+    .from("assessment_assignments")
+    .update({ ai_review: review, ai_review_generated_at: new Date().toISOString() })
+    .eq("id", assignmentId);
   if (error) throw error;
 }
 

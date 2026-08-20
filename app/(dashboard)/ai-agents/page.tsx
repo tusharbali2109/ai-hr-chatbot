@@ -19,10 +19,18 @@ interface AgentDefinition {
   icon: typeof FileEdit;
   status: AgentStatus;
   lastActivity: string;
+  href?: string;
 }
 
 const STATIC_AGENTS: AgentDefinition[] = [
-  { name: "JD Agent", description: "Drafts job descriptions from a short requirement brief.", icon: FileEdit, status: "Idle", lastActivity: "Not yet run" },
+  {
+    name: "JD Maker",
+    description: "Chat with the JD agent to put together a job description, step by step.",
+    icon: FileEdit,
+    status: "Idle",
+    lastActivity: "Not yet run",
+    href: "/ai-agents/jd-maker",
+  },
   { name: "Job Posting Agent", description: "Publishes open roles to job boards and career sites.", icon: Send, status: "Idle", lastActivity: "Not yet run" },
   { name: "Skill Verification Agent", description: "Verifies candidate-claimed skills before interview.", icon: ShieldCheck, status: "Idle", lastActivity: "Not yet run" },
   { name: "AI Interview Agent", description: "Conducts structured AI voice/chat interviews.", icon: Sparkles, status: "Idle", lastActivity: "Not yet run" },
@@ -81,9 +89,9 @@ export default async function AiAgentsPage() {
       : "Not yet run",
   };
 
-  const excludedNames = new Set(["JD Agent", "Job Posting Agent", "Skill Verification Agent", "AI Interview Agent"]);
+  const excludedNames = new Set(["JD Maker", "Job Posting Agent", "Skill Verification Agent", "AI Interview Agent"]);
   const agents: AgentDefinition[] = [
-    STATIC_AGENTS.find((a) => a.name === "JD Agent")!,
+    STATIC_AGENTS.find((a) => a.name === "JD Maker")!,
     STATIC_AGENTS.find((a) => a.name === "Job Posting Agent")!,
     screeningAgent,
     STATIC_AGENTS.find((a) => a.name === "Skill Verification Agent")!,

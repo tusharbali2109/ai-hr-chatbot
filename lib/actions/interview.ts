@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { triggerInterview, retryInterview, type TriggerInterviewResult } from "@/lib/interview/agent";
+import { startBrowserInterview, type StartBrowserInterviewResult } from "@/lib/interview/browser-agent";
 import { getApplication, updateApplicationStage } from "@/lib/services/applications";
 import { getAuthedCompanyId, assertJobOwnership } from "@/lib/services/jd";
 import type { RecruitmentStage } from "@/lib/stages";
@@ -22,6 +23,17 @@ export async function retryInterviewAction(applicationId: string, jobId: string)
   const result = await retryInterview(applicationId);
   revalidatePath(`/jobs/${jobId}`);
   revalidatePath("/candidates");
+  return result;
+}
+
+/** Sends a shortlisted candidate an AI video interview link instead of
+ * placing a phone call — same eligibility, same conversation engine, just a
+ * different channel (see lib/interview/browser-agent.ts). */
+export async function startBrowserInterviewAction(applicationId: string, jobId: string): Promise<StartBrowserInterviewResult> {
+  const result = await startBrowserInterview(applicationId);
+  revalidatePath(`/jobs/${jobId}`);
+  revalidatePath("/candidates");
+  revalidatePath(`/candidates/${applicationId}`);
   return result;
 }
 

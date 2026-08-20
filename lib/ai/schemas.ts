@@ -444,6 +444,119 @@ export const assessmentQuestionEvaluationJsonSchema = {
   additionalProperties: false,
 } as const;
 
+/**
+ * Open-ended assessment review — output of the Assessment Review Agent
+ * (open-ended flavor). Deliberately qualitative, not a score: the recruiter
+ * uploaded a free-form task brief and later a candidate's completed
+ * submission received outside the platform, and this produces a briefing
+ * document for the interviewer rather than a SHORTLIST/REJECT decision —
+ * no stage transition or auto-recommendation is derived from it.
+ */
+export const OpenEndedReviewSchema = z.object({
+  strengths: z.array(z.string()),
+  weaknesses: z.array(z.string()),
+  focus_areas: z.array(z.string()),
+  gaps: z.array(z.string()),
+  interviewer_questions: z.array(z.string()),
+  stuck_points: z.array(z.string()),
+  authenticity_notes: z.string(),
+});
+export type OpenEndedReview = z.infer<typeof OpenEndedReviewSchema>;
+
+export const openEndedReviewJsonSchema = {
+  type: "object",
+  properties: {
+    strengths: { type: "array", items: { type: "string" }, description: "What the submission does well, grounded in specific evidence from the text." },
+    weaknesses: { type: "array", items: { type: "string" }, description: "Concrete shortcomings or weak spots in the submission." },
+    focus_areas: {
+      type: "array",
+      items: { type: "string" },
+      description: "What the candidate should focus on improving, based on this submission and the role's requirements.",
+    },
+    gaps: { type: "array", items: { type: "string" }, description: "Requirements from the brief that the submission does not address at all." },
+    interviewer_questions: {
+      type: "array",
+      items: { type: "string" },
+      description: "5-8 specific questions the interviewer should ask about this submission — probing depth of understanding, not generic questions.",
+    },
+    stuck_points: {
+      type: "array",
+      items: { type: "string" },
+      description:
+        "Places the candidate is likely to struggle if asked to explain or extend their own work live — surfaces areas that separate a candidate who genuinely built this from one who copied or had heavy outside help.",
+    },
+    authenticity_notes: {
+      type: "string",
+      description:
+        "Honest, evidence-based observations relevant to verifying the work is the candidate's own (e.g. inconsistent skill level across sections, unexplained sophistication, generic/templated language) — never a verdict, only what to probe for. Empty string if nothing stands out.",
+    },
+  },
+  required: ["strengths", "weaknesses", "focus_areas", "gaps", "interviewer_questions", "stuck_points", "authenticity_notes"],
+  additionalProperties: false,
+} as const;
+
+/**
+ * Digital Workday task evaluation — output of the Workday Evaluation Agent
+ * (Phase 9), one call per task, exactly like assessment question grading.
+ * The AI never emits a whole-session score or ADVANCE/REJECT recommendation
+ * directly — lib/workday/logic.ts computes those deterministically from
+ * every task's score, same shape as screening/assessment.
+ */
+export const WorkdayTaskEvaluationSchema = z.object({
+  score: z.number().min(0).max(100),
+  feedback: z.string(),
+  evidence: z.string(),
+  confidence: z.enum(["HIGH", "MEDIUM", "LOW"]),
+});
+export type WorkdayTaskEvaluation = z.infer<typeof WorkdayTaskEvaluationSchema>;
+
+export const workdayTaskEvaluationJsonSchema = {
+  type: "object",
+  properties: {
+    score: { type: "number", description: "0-100 quality score for this one task's response, judged against the task's rubric dimensions and deliverable." },
+    feedback: { type: "string", description: "Concrete, specific feedback on this response — what was strong, what was weak or missing, grounded in what the candidate actually wrote." },
+    evidence: { type: "string", description: "Quote or closely paraphrase the specific part of the response that most justifies the score." },
+    confidence: {
+      type: "string",
+      enum: ["HIGH", "MEDIUM", "LOW"],
+      description: "LOW if the response is too thin, off-topic, or ambiguous to grade with certainty — surfaces for human review rather than silently guessing.",
+    },
+  },
+  required: ["score", "feedback", "evidence", "confidence"],
+  additionalProperties: false,
+} as const;
+
+/**
+ * Resume-to-candidate extraction — output of the Candidate Intake Agent,
+ * used when a recruiter manually adds a candidate by uploading a resume
+ * instead of typing every field by hand. Purely extractive: every field
+ * must come from text actually present in the resume, never inferred or
+ * guessed — the recruiter reviews and edits before saving either way.
+ */
+export const ResumeCandidateExtractionSchema = z.object({
+  name: z.string(),
+  email: z.string(),
+  phone: z.string().nullable(),
+  location: z.string().nullable(),
+  linkedin_url: z.string().nullable(),
+  portfolio_url: z.string().nullable(),
+});
+export type ResumeCandidateExtraction = z.infer<typeof ResumeCandidateExtractionSchema>;
+
+export const resumeCandidateExtractionJsonSchema = {
+  type: "object",
+  properties: {
+    name: { type: "string", description: "Candidate's full name as it appears on the resume. Empty string if not found." },
+    email: { type: "string", description: "Candidate's email address. Empty string if not found." },
+    phone: { type: ["string", "null"], description: "Candidate's phone number as written, or null if not found." },
+    location: { type: ["string", "null"], description: "City/region the candidate is based in, or null if not stated." },
+    linkedin_url: { type: ["string", "null"], description: "LinkedIn profile URL if present, or null." },
+    portfolio_url: { type: ["string", "null"], description: "Personal website/portfolio/GitHub URL if present, or null." },
+  },
+  required: ["name", "email", "phone", "location", "linkedin_url", "portfolio_url"],
+  additionalProperties: false,
+} as const;
+
 export const jdJsonSchema = {
   type: "object",
   properties: {

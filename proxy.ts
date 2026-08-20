@@ -3,6 +3,11 @@ import { NextResponse, type NextRequest } from "next/server";
 
 const PUBLIC_PATHS = ["/login"];
 
+/** The public careers site — no auth realm at all, visible whether or not
+ * anyone is signed in (unlike /login, a signed-in recruiter previewing
+ * their own careers page should not be bounced to /dashboard). */
+const CAREERS_PREFIX = "/careers";
+
 /** Candidate-facing routes are a separate auth realm from the recruiter
  * dashboard — candidates get a Supabase-auth session too (magic link, see
  * lib/services/candidate-auth.ts) but never a `users` row, so they must
@@ -40,6 +45,11 @@ export async function proxy(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const pathname = request.nextUrl.pathname;
+
+  if (pathname.startsWith(CAREERS_PREFIX)) {
+    return response;
+  }
+
   const isCandidateRoute = pathname.startsWith(CANDIDATE_PREFIX);
 
   if (isCandidateRoute) {

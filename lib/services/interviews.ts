@@ -166,6 +166,22 @@ export async function getLatestInterview(applicationId: string, client?: Supabas
   };
 }
 
+/** RLS-scoped to the logged-in candidate's own browser interviews (see
+ * migration 0011) — mirrors getCurrentAssignmentForCandidate in
+ * lib/services/assessments.ts exactly. */
+export async function getCurrentBrowserInterviewForCandidate(client?: SupabaseClient): Promise<Interview | null> {
+  const supabase = await resolveClient(client);
+  const { data, error } = await supabase
+    .from("interviews")
+    .select("*")
+    .eq("provider", "browser")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data as Interview | null;
+}
+
 export async function updateInterview(
   interviewId: string,
   fields: Partial<

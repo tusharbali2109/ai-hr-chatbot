@@ -1,17 +1,139 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ClipboardCheck } from "lucide-react";
+import { ClipboardCheck, Upload, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Select";
 import { useToast } from "@/components/ui/Toast";
-import { assignAssessmentAction, overrideAssessmentDecisionAction } from "@/lib/actions/assessment";
+import {
+  assignAssessmentAction,
+  overrideAssessmentDecisionAction,
+  uploadOpenEndedSubmissionAction,
+  regenerateOpenEndedReviewAction,
+} from "@/lib/actions/assessment";
 import { DEADLINE_PRESETS, formatDeadlineConfig, type DeadlineConfig } from "@/lib/assessment/logic";
 import type { RecruitmentStage } from "@/lib/stages";
-import type { AssessmentAssignment } from "@/lib/types/database";
+import type { AssessmentAssignment, AssessmentMode } from "@/lib/types/database";
+
+function OpenEndedReviewPanel({ assignment, onRegenerated }: { assignment: AssessmentAssignment; onRegenerated: () => void }) {
+  const { showToast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+
+  async function handleFileSelected(file: File) {
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.set("file", file);
+      const result = await uploadOpenEndedSubmissionAction(assignment.id, formData);
+      if (result.reviewGenerated) {
+        showToast("Submission uploaded and reviewed.", "success");
+      } else {
+        showToast(result.error ?? "Submission uploaded, but the AI review failed — try regenerating it.", "danger");
+      }
+      onRegenerated();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to upload submission.", "danger");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  async function handleRegenerate() {
+    setRegenerating(true);
+    try {
+      const result = await regenerateOpenEndedReviewAction(assignment.id);
+      if (result.reviewGenerated) showToast("Review regenerated.", "success");
+      else showToast(result.error ?? "Failed to regenerate the review.", "danger");
+      onRegenerated();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to regenerate the review.", "danger");
+    } finally {
+      setRegenerating(false);
+    }
+  }
+
+  const review = assignment.ai_review;
+
+  return (
+    <div className="flex flex-col gap-3 rounded-[var(--radius-md)] border border-border bg-surface-elevated p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-medium text-foreground">
+          {assignment.submission_file_path ? "Candidate submission" : "No submission uploaded yet"}
+        </p>
+        <div className="flex items-center gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.docx,.txt,.md"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void handleFileSelected(file);
+            }}
+          />
+          <Button size="sm" variant="secondary" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+            <Upload className="h-3.5 w-3.5" />
+            {uploading ? "Uploading…" : assignment.submission_file_path ? "Replace submission" : "Upload submission"}
+          </Button>
+          {review && (
+            <Button size="sm" variant="secondary" onClick={handleRegenerate} disabled={regenerating}>
+              <Sparkles className="h-3.5 w-3.5" />
+              {regenerating ? "Reviewing…" : "Regenerate review"}
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {!assignment.submission_file_path && (
+        <p className="text-xs text-muted-foreground">
+          Upload the candidate&apos;s completed work (received outside the platform, e.g. by email) — the AI review generates automatically.
+        </p>
+      )}
+
+      {review && (
+        <div className="mt-1 flex flex-col gap-4 text-sm">
+          <ReviewSection title="Strengths" items={review.strengths} tone="success" />
+          <ReviewSection title="Weaknesses" items={review.weaknesses} tone="danger" />
+          <ReviewSection title="Focus areas" items={review.focus_areas} tone="warning" />
+          <ReviewSection title="Gaps vs. the brief" items={review.gaps} tone="danger" />
+          <ReviewSection title="Suggested interviewer questions" items={review.interviewer_questions} tone="accent" />
+          <ReviewSection title="Where they may get stuck" items={review.stuck_points} tone="info" />
+          {review.authenticity_notes && (
+            <div>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Worth a closer look</p>
+              <p className="text-sm text-muted-foreground">{review.authenticity_notes}</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReviewSection({ title, items, tone }: { title: string; items: string[]; tone: "success" | "danger" | "warning" | "accent" | "info" }) {
+  if (items.length === 0) return null;
+  return (
+    <div>
+      <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
+      <ul className="flex flex-col gap-1.5">
+        {items.map((item, i) => (
+          <li key={i} className="flex gap-2">
+            <Badge tone={tone} className="mt-0.5 shrink-0">
+              {i + 1}
+            </Badge>
+            <span className="text-muted-foreground">{item}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 const RECOMMENDATION_TONE: Record<string, "success" | "warning" | "danger"> = {
   SHORTLIST: "success",
@@ -25,12 +147,14 @@ export function AssessmentActions({
   currentStage,
   hasReadyAssessment,
   assignment,
+  assessmentType,
 }: {
   applicationId: string;
   jobId: string;
   currentStage: RecruitmentStage;
   hasReadyAssessment: boolean;
   assignment: AssessmentAssignment | null;
+  assessmentType: AssessmentMode | null;
 }) {
   const router = useRouter();
   const { showToast } = useToast();
@@ -98,9 +222,13 @@ export function AssessmentActions({
         )}
       </div>
 
-      {assignment?.status === "COMPLETED" && (
+      {assessmentType === "OPEN_ENDED" && assignment && assignment.status !== "CANCELLED" && (
+        <OpenEndedReviewPanel assignment={assignment} onRegenerated={() => router.refresh()} />
+      )}
+
+      {(assignment?.status === "COMPLETED" || (assessmentType === "OPEN_ENDED" && assignment?.submission_file_path)) && (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-muted-foreground">Recruiter override:</span>
+          <span className="text-xs text-muted-foreground">Recruiter decision:</span>
           <Button size="sm" variant="secondary" onClick={() => setOverrideTarget("ASSESSMENT_SHORTLISTED")}>
             Shortlist
           </Button>

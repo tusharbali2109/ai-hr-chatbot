@@ -265,7 +265,7 @@ export type InterviewStatus =
   | "CONSENT_DECLINED"
   | "NEEDS_REVIEW";
 
-export type InterviewProvider = "mock" | "twilio";
+export type InterviewProvider = "mock" | "twilio" | "browser";
 export type ConsentStatus = "PENDING" | "GRANTED" | "DECLINED";
 export type InterviewRecommendation = "INTERVIEW_SHORTLISTED" | "REJECTED" | "NEEDS_REVIEW";
 export type InterviewConfidence = "HIGH" | "MEDIUM" | "LOW";
@@ -359,7 +359,9 @@ export type InterviewEventType =
   | "CALL_ENDED"
   | "EVALUATION_COMPLETED"
   | "CALL_FAILED"
-  | "HUMAN_OVERRIDE";
+  | "HUMAN_OVERRIDE"
+  | "CAMERA_ENABLED"
+  | "PROCTORING_WARNING";
 
 export interface InterviewEvent {
   id: string;
@@ -373,6 +375,8 @@ export interface InterviewEvent {
 export type AssessmentType = "TECHNICAL" | "CODING" | "CASE_STUDY" | "WRITTEN" | "MCQ" | "SCENARIO" | "ROLE_SPECIFIC" | "CUSTOM";
 export type AssessmentStatus = "DRAFT" | "READY" | "SENT" | "IN_PROGRESS" | "SUBMITTED" | "EVALUATING" | "EVALUATED" | "EXPIRED" | "CANCELLED";
 export type DeadlineUnit = "HOURS" | "DAYS";
+
+export type AssessmentMode = "STRUCTURED" | "OPEN_ENDED";
 
 export interface Assessment {
   id: string;
@@ -390,6 +394,9 @@ export interface Assessment {
   deadline_unit: DeadlineUnit;
   deadline_value: number;
   auto_submit_on_expiry: boolean;
+  assessment_type: AssessmentMode;
+  brief_file_path: string | null;
+  brief_text: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -439,6 +446,16 @@ export interface AssessmentQuestionPublic {
 export type AssignmentStatus = "ASSIGNED" | "STARTED" | "SUBMITTED" | "EVALUATING" | "COMPLETED" | "EXPIRED" | "CANCELLED";
 export type AssessmentRecommendation = "SHORTLIST" | "REJECT" | "NEEDS_REVIEW";
 
+export interface OpenEndedReviewResult {
+  strengths: string[];
+  weaknesses: string[];
+  focus_areas: string[];
+  gaps: string[];
+  interviewer_questions: string[];
+  stuck_points: string[];
+  authenticity_notes: string;
+}
+
 export interface AssessmentAssignment {
   id: string;
   assessment_id: string;
@@ -451,6 +468,10 @@ export interface AssessmentAssignment {
   deadline: string;
   score: number | null;
   recommendation: AssessmentRecommendation | null;
+  submission_file_path: string | null;
+  submission_text: string | null;
+  ai_review: OpenEndedReviewResult | null;
+  ai_review_generated_at: string | null;
   created_at: string;
   updated_at: string;
 }

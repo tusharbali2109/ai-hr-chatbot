@@ -1,7 +1,16 @@
-import { createClient } from "@/lib/supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { createClient as createServerClient } from "@/lib/supabase/server";
 import type { JobJdVersion } from "@/lib/types/database";
 import type { JDGeneration } from "@/lib/ai/schemas";
 import { isJobOwnedByCompany, computeNextVersionNumber } from "@/lib/jd/logic";
+
+/** Optional client param — background/system callers (e.g. auto-screening
+ * triggered from ingestion) pass the service-role client explicitly, same
+ * pattern used throughout lib/services. */
+async function createClient(client?: SupabaseClient): Promise<SupabaseClient> {
+  if (client) return client;
+  return (await createServerClient()) as unknown as SupabaseClient;
+}
 
 export async function listJdVersions(jobId: string): Promise<JobJdVersion[]> {
   const supabase = await createClient();
@@ -18,8 +27,8 @@ export async function listJdVersions(jobId: string): Promise<JobJdVersion[]> {
 /** The JD version that was approved for this job — screenings tag this id
  * so a later JD edit never retroactively changes what an old screening was
  * evaluated against. */
-export async function getApprovedJdVersion(jobId: string): Promise<JobJdVersion | null> {
-  const supabase = await createClient();
+export async function getApprovedJdVersion(jobId: string, client?: SupabaseClient): Promise<JobJdVersion | null> {
+  const supabase = await createClient(client);
   const { data, error } = await supabase
     .from("job_jd_versions")
     .select("*")

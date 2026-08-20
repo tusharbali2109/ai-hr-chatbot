@@ -1,9 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 import { listLatestRecommendations } from "@/lib/services/screening";
+import { listJobs } from "@/lib/services/jobs";
 import { CandidatesBoard, type CandidateListItem } from "./CandidatesBoard";
+import { AddCandidateButton } from "./AddCandidateButton";
 
 export default async function CandidatesPage() {
   const supabase = await createClient();
+  const jobs = await listJobs();
 
   const { data, error } = await supabase
     .from("applications")
@@ -38,9 +41,12 @@ export default async function CandidatesPage() {
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Candidates</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{items.length} applications across all roles.</p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Candidates</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{items.length} applications across all roles.</p>
+        </div>
+        <AddCandidateButton jobs={jobs.map((j) => ({ id: j.id, title: j.title }))} />
       </div>
 
       <CandidatesBoard items={items} />

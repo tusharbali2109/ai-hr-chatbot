@@ -19,6 +19,7 @@ import { InterviewActions } from "./InterviewActions";
 import { InterviewTranscript } from "./InterviewTranscript";
 import { AssessmentActions } from "./AssessmentActions";
 import { InterviewSchedulingActions } from "./InterviewSchedulingActions";
+import { WhatsAppButton } from "./WhatsAppButton";
 
 const REQUIREMENT_STATUS_ICON: Record<string, typeof CheckCircle2> = {
   MATCH: CheckCircle2,
@@ -137,6 +138,14 @@ export default async function CandidateDetailPage({ params }: PageProps<"/candid
           {primaryApplication?.overall_score != null && (
             <Badge tone="accent">AI Score: {primaryApplication.overall_score}%</Badge>
           )}
+          {candidate.phone && primaryApplication && (
+            <WhatsAppButton
+              phone={candidate.phone}
+              candidateName={candidate.name}
+              jobTitle={primaryApplication.job.title}
+              stage={primaryApplication.current_stage}
+            />
+          )}
         </div>
       </div>
 
@@ -187,6 +196,7 @@ export default async function CandidateDetailPage({ params }: PageProps<"/candid
             currentStage={primaryApplication.current_stage}
             hasReadyAssessment={jobAssessment?.status === "READY"}
             assignment={assessmentAssignment}
+            assessmentType={jobAssessment?.assessment_type ?? null}
           />
         </div>
       )}

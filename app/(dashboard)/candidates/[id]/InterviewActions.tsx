@@ -2,12 +2,17 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { PhoneCall, RefreshCw } from "lucide-react";
+import { PhoneCall, RefreshCw, Video } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
-import { triggerInterviewAction, retryInterviewAction, overrideInterviewDecisionAction } from "@/lib/actions/interview";
+import {
+  triggerInterviewAction,
+  retryInterviewAction,
+  overrideInterviewDecisionAction,
+  startBrowserInterviewAction,
+} from "@/lib/actions/interview";
 import type { RecruitmentStage } from "@/lib/stages";
 
 const RECOMMENDATION_TONE: Record<string, "success" | "warning" | "danger"> = {
@@ -34,6 +39,7 @@ export function InterviewActions({
   const router = useRouter();
   const { showToast } = useToast();
   const [running, setRunning] = useState(false);
+  const [sendingVideo, setSendingVideo] = useState(false);
   const [overrideTarget, setOverrideTarget] = useState<"INTERVIEW_SHORTLISTED" | "REJECTED" | "NEEDS_REVIEW" | null>(null);
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -55,6 +61,19 @@ export function InterviewActions({
       showToast(err instanceof Error ? err.message : "Failed to trigger interview.", "danger");
     } finally {
       setRunning(false);
+    }
+  }
+
+  async function handleSendVideoInterview() {
+    setSendingVideo(true);
+    try {
+      await startBrowserInterviewAction(applicationId, jobId);
+      showToast("Video interview link emailed to the candidate.", "success");
+      router.refresh();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to send the video interview.", "danger");
+    } finally {
+      setSendingVideo(false);
     }
   }
 
@@ -100,7 +119,13 @@ export function InterviewActions({
         {canTrigger && (
           <Button size="sm" variant="secondary" onClick={handleTrigger} disabled={running}>
             <PhoneCall className="h-3.5 w-3.5" />
-            {running ? "Calling…" : "Run AI Interview"}
+            {running ? "Calling…" : "Run AI Phone Interview"}
+          </Button>
+        )}
+        {canTrigger && (
+          <Button size="sm" variant="secondary" onClick={handleSendVideoInterview} disabled={sendingVideo}>
+            <Video className="h-3.5 w-3.5" />
+            {sendingVideo ? "Sending…" : "Send AI Video Interview"}
           </Button>
         )}
         {canRetry && (
