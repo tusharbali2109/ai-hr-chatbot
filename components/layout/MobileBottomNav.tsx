@@ -13,9 +13,16 @@ import { cn } from "@/lib/utils/cn";
 const PRIMARY_HREFS = ["/dashboard", "/jobs", "/candidates", "/applications"];
 const PRIMARY_ICONS = { "/dashboard": LayoutDashboard, "/jobs": Briefcase, "/candidates": Users, "/applications": FileText };
 
+// Routes with their own page-specific sticky mobile action bar (see e.g.
+// MobileNextActionBar on the candidate detail page) replace the global tab
+// bar entirely rather than stacking two fixed bottom bars.
+const REPLACED_BY_PAGE_ACTION_BAR = [/^\/candidates\/[^/]+$/];
+
 export function MobileBottomNav() {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
+
+  if (REPLACED_BY_PAGE_ACTION_BAR.some((pattern) => pattern.test(pathname))) return null;
 
   const primaryItems = PRIMARY_HREFS.map((href) => NAV_ITEMS.find((item) => item.href === href)!).filter(Boolean);
   const moreItems = NAV_ITEMS.filter((item) => !PRIMARY_HREFS.includes(item.href));

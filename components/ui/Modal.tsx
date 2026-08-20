@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
@@ -14,7 +14,30 @@ export interface ModalProps {
   className?: string;
 }
 
+/** Every dialog in the app goes through this one component (13 call sites —
+ * every action panel, Create/Add flows, confirmations), so making it
+ * mobile-aware here upgrades all of them at once: a centered dialog on
+ * desktop, a bottom sheet on mobile (slides up, rounded top, drag handle,
+ * safe-area padding) — the standard mobile pattern instead of a cramped
+ * centered box. */
+function useIsMobile(): boolean {
+  // Lazy initializer reads the real value up front (SSR-safe: window is
+  // undefined during server render, defaults to false) — the effect below
+  // only subscribes to subsequent changes, never sets state synchronously
+  // on its own first run.
+  const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px)");
+    const onChange = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return isMobile;
+}
+
 export function Modal({ open, onClose, title, children, className }: ModalProps) {
+  const isMobile = useIsMobile();
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -27,7 +50,7 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
   return createPortal(
     <AnimatePresence>
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className={cn("fixed inset-0 z-50 flex", isMobile ? "items-end" : "items-center justify-center p-4")}>
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -41,15 +64,19 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
             role="dialog"
             aria-modal="true"
             aria-label={title}
-            initial={{ opacity: 0, y: 12, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 8, scale: 0.98 }}
-            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+            initial={isMobile ? { y: "100%" } : { opacity: 0, y: 12, scale: 0.98 }}
+            animate={isMobile ? { y: 0 } : { opacity: 1, y: 0, scale: 1 }}
+            exit={isMobile ? { y: "100%" } : { opacity: 0, y: 8, scale: 0.98 }}
+            transition={isMobile ? { duration: 0.28, ease: [0.16, 1, 0.3, 1] } : { duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
             className={cn(
-              "relative z-10 w-full max-w-lg rounded-[var(--radius-lg)] border border-border bg-surface-elevated p-6 shadow-[var(--shadow-elevated)]",
+              "relative z-10 w-full border-border bg-surface-elevated shadow-[var(--shadow-elevated)]",
+              isMobile
+                ? "pb-safe max-h-[85vh] overflow-y-auto scrollbar-thin rounded-t-[var(--radius-xl)] border-t p-5"
+                : "max-w-lg rounded-[var(--radius-lg)] border p-6",
               className
             )}
           >
+            {isMobile && <div className="mx-auto mb-3 h-1 w-10 shrink-0 rounded-full bg-border" aria-hidden />}
             {title && (
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-foreground">{title}</h2>

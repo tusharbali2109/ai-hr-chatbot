@@ -20,6 +20,7 @@ import { InterviewTranscript } from "./InterviewTranscript";
 import { AssessmentActions } from "./AssessmentActions";
 import { InterviewSchedulingActions } from "./InterviewSchedulingActions";
 import { WhatsAppButton } from "./WhatsAppButton";
+import { MobileNextActionBar } from "./MobileNextActionBar";
 
 const REQUIREMENT_STATUS_ICON: Record<string, typeof CheckCircle2> = {
   MATCH: CheckCircle2,
@@ -55,6 +56,23 @@ export default async function CandidateDetailPage({ params }: PageProps<"/candid
   const canRetryInterview = Boolean(
     interview && RETRYABLE_INTERVIEW_STATUSES.includes(interview.status) && interview.attempt_number < interview.max_attempts
   );
+
+  // Mirrors each action panel's own eligibility check (never re-derives new
+  // rules) purely to decide which section the mobile sticky bar should
+  // point at — the panels themselves remain the single source of truth for
+  // whether an action can actually be taken.
+  const stage = primaryApplication?.current_stage;
+  const nextAction = !primaryApplication
+    ? null
+    : !screening && (stage === "APPLIED" || stage === "AI_SCREENING")
+      ? { label: "Run AI Screening", targetId: "screening-section" }
+      : stage === "SHORTLISTED" && !interview
+        ? { label: "Run AI Interview", targetId: "interview-section" }
+        : stage === "INTERVIEW_SHORTLISTED" && jobAssessment?.status === "READY" && !assessmentAssignment
+          ? { label: "Send Assessment", targetId: "assessment-section" }
+          : stage && ["ASSESSMENT_SHORTLISTED", "FINAL_REVIEW"].includes(stage)
+            ? { label: "Schedule Interview", targetId: "scheduling-section" }
+            : null;
 
   const interviewComponentScoreLabels: { key: keyof NonNullable<typeof interview>["component_scores"]; label: string }[] = [
     { key: "technicalKnowledge", label: "Technical Knowledge" },
@@ -150,7 +168,7 @@ export default async function CandidateDetailPage({ params }: PageProps<"/candid
       </div>
 
       {primaryApplication && (
-        <div className="mb-6 rounded-[var(--radius-lg)] border border-border bg-surface p-5">
+        <div id="screening-section" className="mb-6 scroll-mt-20 rounded-[var(--radius-lg)] border border-border bg-surface p-5">
           <h2 className="mb-3 text-sm font-semibold text-foreground">AI Screening</h2>
           <ScreeningActions
             applicationId={primaryApplication.id}
@@ -163,7 +181,7 @@ export default async function CandidateDetailPage({ params }: PageProps<"/candid
       )}
 
       {primaryApplication && (
-        <div className="mb-6 rounded-[var(--radius-lg)] border border-border bg-surface p-5">
+        <div id="interview-section" className="mb-6 scroll-mt-20 rounded-[var(--radius-lg)] border border-border bg-surface p-5">
           <h2 className="mb-3 text-sm font-semibold text-foreground">AI Interview</h2>
           <InterviewActions
             applicationId={primaryApplication.id}
@@ -188,7 +206,7 @@ export default async function CandidateDetailPage({ params }: PageProps<"/candid
       )}
 
       {primaryApplication && (
-        <div className="mb-6 rounded-[var(--radius-lg)] border border-border bg-surface p-5">
+        <div id="assessment-section" className="mb-6 scroll-mt-20 rounded-[var(--radius-lg)] border border-border bg-surface p-5">
           <h2 className="mb-3 text-sm font-semibold text-foreground">Assessment</h2>
           <AssessmentActions
             applicationId={primaryApplication.id}
@@ -202,7 +220,7 @@ export default async function CandidateDetailPage({ params }: PageProps<"/candid
       )}
 
       {primaryApplication && (
-        <div className="mb-6 rounded-[var(--radius-lg)] border border-border bg-surface p-5">
+        <div id="scheduling-section" className="mb-6 scroll-mt-20 rounded-[var(--radius-lg)] border border-border bg-surface p-5">
           <h2 className="mb-3 text-sm font-semibold text-foreground">Interview Scheduling</h2>
           <InterviewSchedulingActions
             applicationId={primaryApplication.id}
@@ -323,6 +341,8 @@ export default async function CandidateDetailPage({ params }: PageProps<"/candid
           </Section>
         </div>
       </div>
+
+      {nextAction && <MobileNextActionBar label={nextAction.label} targetId={nextAction.targetId} />}
     </div>
   );
 }
