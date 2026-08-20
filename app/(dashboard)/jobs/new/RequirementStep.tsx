@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import type { StructuredInputOverrides } from "@/lib/ai/provider";
+import { extractJdFileTextAction } from "@/lib/actions/jd";
 
 export interface RequirementStepProps {
   onSubmit: (rawRequirement: string, overrides: StructuredInputOverrides) => void;
@@ -18,6 +19,7 @@ export function RequirementStep({ onSubmit, submitting, error, initialRawRequire
   const [raw, setRaw] = useState(initialRawRequirement);
   const [uploadedName, setUploadedName] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showStructured, setShowStructured] = useState(false);
 
@@ -50,21 +52,36 @@ export function RequirementStep({ onSubmit, submitting, error, initialRawRequire
     if (!file) return;
     setUploadError(null);
     const extension = file.name.split(".").pop()?.toLowerCase();
-    if (!extension || !["txt", "md"].includes(extension)) {
-      setUploadError("Upload a .txt or .md JD. For Word/PDF, copy its text and paste it below.");
+    if (!extension || !["txt", "md", "pdf", "docx"].includes(extension)) {
+      setUploadError("Upload a .txt, .md, .pdf, or .docx JD.");
       return;
     }
-    if (file.size > 1_000_000) {
-      setUploadError("JD file must be smaller than 1 MB.");
+    if (file.size > 10_000_000) {
+      setUploadError("JD file must be smaller than 10 MB.");
       return;
     }
-    const text = await file.text();
-    if (!text.trim()) {
-      setUploadError("This JD file is empty.");
-      return;
+
+    setUploading(true);
+    try {
+      let text: string;
+      if (extension === "txt" || extension === "md") {
+        text = await file.text();
+      } else {
+        const formData = new FormData();
+        formData.set("jd", file);
+        text = await extractJdFileTextAction(formData);
+      }
+      if (!text.trim()) {
+        setUploadError("This JD file is empty.");
+        return;
+      }
+      setRaw(text);
+      setUploadedName(file.name);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Couldn't read that file — try a different format.");
+    } finally {
+      setUploading(false);
     }
-    setRaw(text);
-    setUploadedName(file.name);
   }
 
   return (
@@ -81,12 +98,18 @@ export function RequirementStep({ onSubmit, submitting, error, initialRawRequire
         </div>
 
         <div className="mb-4 flex flex-wrap items-center gap-3 rounded-[var(--radius-md)] border border-dashed border-border bg-background p-3">
-          <input ref={fileInputRef} type="file" accept=".txt,.md,text/plain,text/markdown" className="hidden" onChange={(e) => handleFile(e.target.files?.[0])} />
-          <Button type="button" variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()}>
-            <Upload className="h-4 w-4" /> Upload JD
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".txt,.md,.pdf,.docx,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            className="hidden"
+            onChange={(e) => handleFile(e.target.files?.[0])}
+          />
+          <Button type="button" variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+            <Upload className="h-4 w-4" /> {uploading ? "Reading file…" : "Upload JD"}
           </Button>
           <div className="min-w-0 text-xs text-muted-foreground">
-            {uploadedName ? <span className="flex items-center gap-1.5 text-success"><FileText className="h-3.5 w-3.5" />{uploadedName} loaded</span> : ".txt or .md up to 1 MB · paste text from Word/PDF below"}
+            {uploadedName ? <span className="flex items-center gap-1.5 text-success"><FileText className="h-3.5 w-3.5" />{uploadedName} loaded</span> : "PDF, DOCX, .txt, or .md up to 10 MB"}
           </div>
         </div>
         {uploadError && <p role="alert" className="mb-3 text-sm text-danger">{uploadError}</p>}

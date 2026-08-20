@@ -14,6 +14,25 @@ import {
 } from "@/lib/services/jd";
 import { validateJdForApproval, mapEmploymentType, mapWorkMode, isRequirementTextValid } from "@/lib/jd/logic";
 
+const MAX_JD_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+/**
+ * Dynamic import, not a static one — lib/files/text-extraction.ts pulls in
+ * pdf-parse, which breaks Next's action-browser client-reference bundling if
+ * statically imported from a "use server" file (see lib/actions/assessment.ts).
+ */
+export async function extractJdFileTextAction(formData: FormData): Promise<string> {
+  const file = formData.get("jd");
+  if (!(file instanceof File)) throw new Error("A JD file is required.");
+  if (file.size > MAX_JD_UPLOAD_BYTES) throw new Error("File exceeds the 10MB limit.");
+
+  const { extractTextFromFile } = await import("@/lib/files/text-extraction");
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const text = await extractTextFromFile(buffer, file.name, file.type);
+  if (!text) throw new Error("Couldn't read any text from this file — try a different format (PDF, DOCX, or plain text).");
+  return text;
+}
+
 export async function extractRequirementAction(
   rawRequirement: string,
   overrides: StructuredInputOverrides
