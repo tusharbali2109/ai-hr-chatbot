@@ -19,6 +19,7 @@ import { sendNextStepEmail } from "@/lib/communication/agent";
 import { getAIProvider } from "@/lib/ai";
 import { MODEL } from "@/lib/ai/anthropic-provider";
 import { buildCandidateProfile } from "@/lib/screening/candidate-data-provider";
+import { fetchCandidateResumeText } from "@/lib/files/resume-text";
 import {
   computeWeightedScore,
   evaluateMandatoryStatus,
@@ -134,7 +135,8 @@ export async function screenApplication(applicationId: string, system?: SystemSc
   );
 
   try {
-    const profile = buildCandidateProfile(candidate);
+    const resumeText = await fetchCandidateResumeText(candidate.resume_url, client);
+    const profile = buildCandidateProfile(candidate, resumeText);
 
     const evaluation = await getAIProvider().evaluateCandidate({
       candidateName: candidate.name,

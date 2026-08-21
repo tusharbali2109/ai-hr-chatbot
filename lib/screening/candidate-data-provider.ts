@@ -7,12 +7,11 @@ export interface CandidateProfile {
 
 /**
  * CandidateDataProvider — builds the profile text handed to the AI
- * evaluator from whatever candidate data actually exists today. No resume
- * text-extraction pipeline exists in this codebase yet (candidates only
- * store a `resume_url` link, not parsed content), so this deliberately
- * stays a thin, isolated seam: a future ResumeDataProvider that actually
- * downloads/parses the resume can replace this function's internals
- * without the screening agent changing at all.
+ * evaluator from whatever candidate data actually exists today. resumeText
+ * is extracted separately (lib/files/resume-text.ts::fetchCandidateResumeText,
+ * best-effort — undefined on any download/parse failure or for an external
+ * job-board URL with no file to download) and passed in by the caller,
+ * keeping this function itself a thin, storage-agnostic seam.
  *
  * Never invents data — fields that are absent are simply omitted, not
  * guessed at. If no information exists, the AI evaluator will correctly
@@ -20,12 +19,14 @@ export interface CandidateProfile {
  * requirements, which is the honest outcome per the screening spec's
  * "if unavailable, UNKNOWN — never assume absence means failure" rule.
  */
-export function buildCandidateProfile(candidate: Candidate): CandidateProfile {
+export function buildCandidateProfile(candidate: Candidate, resumeText?: string): CandidateProfile {
   const lines: string[] = [];
   if (candidate.location) lines.push(`Location: ${candidate.location}`);
-  if (candidate.resume_url) {
+  if (resumeText) {
+    lines.push(`Resume content:\n"""\n${resumeText}\n"""`);
+  } else if (candidate.resume_url) {
     lines.push(
-      `Resume on file (link only — full text is not available to this system yet, do not assume any content beyond what is listed here): ${candidate.resume_url}`
+      `Resume on file (link only — full text could not be extracted, do not assume any content beyond what is listed here): ${candidate.resume_url}`
     );
   }
   if (candidate.linkedin_url) lines.push(`LinkedIn: ${candidate.linkedin_url}`);
