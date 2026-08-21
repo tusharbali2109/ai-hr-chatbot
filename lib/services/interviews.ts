@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { computeNextVersionNumber } from "@/lib/jd/logic";
+import { getCompany } from "@/lib/services/companies";
 import type { ScreeningCriteria } from "@/lib/ai/schemas";
 import type {
   Interview,
@@ -105,16 +106,23 @@ export interface InterviewContext {
   jobTitle: string;
   jobDescription: string;
   screeningCriteria: ScreeningCriteria | null;
+  candidateName: string;
+  companyName: string;
 }
 
-/** Joins interviews -> applications -> jobs in one query so the Twilio
- * webhook route (no session, no access to the session-bound lib/services/jobs.ts
- * getJob helper) can load the context it needs via the service-role client. */
+/** Joins interviews -> applications -> jobs -> candidates in one query so
+ * the Twilio webhook route (no session, no access to the session-bound
+ * lib/services/jobs.ts getJob helper) can load the context it needs via the
+ * service-role client. companyName is a second lookup via
+ * lib/services/companies.ts::getCompany (job.company_id) rather than a
+ * nested join, keeping this query's shape simple. */
 export async function getInterviewContext(interviewId: string, client?: SupabaseClient): Promise<InterviewContext | null> {
   const supabase = await resolveClient(client);
   const { data, error } = await supabase
     .from("interviews")
-    .select("application_id, application:applications(job_id, candidate_id, job:jobs(title, description, screening_criteria))")
+    .select(
+      "application_id, application:applications(job_id, candidate_id, candidate:candidates(name), job:jobs(title, description, screening_criteria, company_id))"
+    )
     .eq("id", interviewId)
     .maybeSingle();
   if (error) throw error;
@@ -123,8 +131,11 @@ export async function getInterviewContext(interviewId: string, client?: Supabase
   const application = data.application as unknown as {
     job_id: string;
     candidate_id: string;
-    job: { title: string; description: string; screening_criteria: ScreeningCriteria | null };
+    candidate: { name: string };
+    job: { title: string; description: string; screening_criteria: ScreeningCriteria | null; company_id: string };
   };
+
+  const company = await getCompany(application.job.company_id, supabase);
 
   return {
     applicationId: data.application_id as string,
@@ -133,6 +144,8 @@ export async function getInterviewContext(interviewId: string, client?: Supabase
     jobTitle: application.job.title,
     jobDescription: application.job.description,
     screeningCriteria: application.job.screening_criteria,
+    candidateName: application.candidate.name,
+    companyName: company?.name ?? "our company",
   };
 }
 

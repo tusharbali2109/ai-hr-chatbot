@@ -1,6 +1,22 @@
 import { normalizePhone } from "@/lib/ingestion/logic";
 import type { InterviewEvaluation } from "@/lib/ai/schemas";
 import type { AnswerSufficiency, InterviewComponentScores, InterviewRecommendation } from "@/lib/types/database";
+import type { RecruitmentStage } from "@/lib/stages";
+
+/** Converts a finalized interview's recommendation + status into the next
+ * pipeline stage. Lives here (not in lib/interview/agent.ts) so both the
+ * session-bound agent trigger path (mock provider's synchronous
+ * completion) and the Twilio voice webhook (no session, real calls'
+ * completion happens entirely inside the webhook) can call the exact same
+ * pure logic without importing each other. */
+export function mapRecommendationToStage(recommendation: string | null, status: string): RecruitmentStage {
+  // Consent decline (and any not-yet-final status) stays at AI_INTERVIEW —
+  // never silently rejected. The recruiter decides the next step.
+  if (status !== "COMPLETED") return "AI_INTERVIEW";
+  if (recommendation === "INTERVIEW_SHORTLISTED") return "INTERVIEW_SHORTLISTED";
+  if (recommendation === "REJECTED") return "REJECTED";
+  return "NEEDS_REVIEW";
+}
 
 /** The AI's structured output uses snake_case (matching the rest of
  * lib/ai/schemas.ts's convention); the app's internal ComponentScores type

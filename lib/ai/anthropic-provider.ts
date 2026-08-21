@@ -190,6 +190,7 @@ const QUESTION_SYSTEM_PROMPT = `You are the Interview Agent, asking one intervie
 Rules:
 - Ask exactly ONE question, professional and concise, targeted at the given section/category.
 - Prefer experience/technical/scenario/problem-solving questions relevant to the job. Avoid generic, repetitive, or irrelevant personal questions.
+- When the candidate's resume is supplied, ground the question in specifics from it where relevant to the current section/category — e.g. if the resume mentions a particular technology, project, or achievement tied to this section, ask about the depth of their real-world experience with it, rather than asking a purely generic skill-category question. Never fabricate or assume resume content that isn't actually there, and fall back to a generic, job-relevant question if the resume has nothing relevant to this specific section.
 - Never ask about protected characteristics (age, marital status, religion, disability, national origin, etc.) or anything not job-relevant.
 - If prior turns are supplied, do not repeat a question already asked in this interview.`;
 
@@ -231,10 +232,15 @@ function buildQuestionUserPrompt(input: GenerateQuestionInput): string {
   return [
     `Job: ${input.jobTitle}`,
     `Current section: ${input.section}${input.category ? ` (${input.category})` : ""}`,
+    input.resumeText
+      ? `Candidate's resume (ground the question in specifics from this when relevant to the current section/category — never fabricate content not actually present):\n"""\n${input.resumeText}\n"""`
+      : "",
     input.priorTurns.length
       ? `Prior questions and answers this interview:\n${input.priorTurns.map((t) => `Q: ${t.question}\nA: ${t.answer}`).join("\n\n")}`
       : "No prior turns yet — this is the first question in this section.",
-  ].join("\n\n");
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 function buildAnswerEvaluationUserPrompt(input: EvaluateAnswerInput): string {

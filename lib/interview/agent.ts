@@ -14,8 +14,9 @@ import { createInterview, createInterviewQuestion, getInterview, getLatestInterv
 import { logInternalEvent } from "@/lib/services/ingestion";
 import { getAIProvider } from "@/lib/ai";
 import { getVoiceProvider } from "@/lib/interview/registry";
-import { formatE164, buildInterviewPlanSections, DEFAULT_INTERVIEW_CONFIG } from "@/lib/interview/logic";
-import type { RecruitmentStage } from "@/lib/stages";
+import { formatE164, buildInterviewPlanSections, DEFAULT_INTERVIEW_CONFIG, mapRecommendationToStage } from "@/lib/interview/logic";
+import { createClient as createServerClient } from "@/lib/supabase/server";
+import { extractTextFromFile } from "@/lib/files/text-extraction";
 import type { InterviewProvider } from "@/lib/types/database";
 
 export interface TriggerInterviewOptions {
@@ -30,13 +31,42 @@ export interface TriggerInterviewResult {
   overallScore?: number;
 }
 
-function mapRecommendationToStage(recommendation: string | null, status: string): RecruitmentStage {
-  // Consent decline (and any not-yet-final status) stays at AI_INTERVIEW —
-  // never silently rejected. The recruiter decides the next step.
-  if (status !== "COMPLETED") return "AI_INTERVIEW";
-  if (recommendation === "INTERVIEW_SHORTLISTED") return "INTERVIEW_SHORTLISTED";
-  if (recommendation === "REJECTED") return "REJECTED";
-  return "NEEDS_REVIEW";
+/** Best-effort resume text extraction so interview questions can be
+ * grounded in the candidate's actual resume content instead of only
+ * generic skill-category prompts. Downloads directly from the private
+ * "public-resumes" storage bucket via the session-bound Supabase client
+ * (candidate.resume_url is a bare {job_id}/filename storage path for
+ * uploads — see lib/services/candidates.ts::getResumeSignedUrl; an
+ * external job-board URL has no file to download here). Never throws —
+ * any failure (missing file, unsupported type, empty resume) falls back
+ * to undefined so callers use the existing generic question behavior
+ * rather than failing the whole interview trigger. */
+async function fetchCandidateResumeText(resumeUrl: string | null): Promise<string | undefined> {
+  if (!resumeUrl || /^https?:\/\//i.test(resumeUrl)) return undefined;
+
+  try {
+    const supabase = await createServerClient();
+    const { data, error } = await supabase.storage.from("public-resumes").download(resumeUrl);
+    if (error || !data) throw error ?? new Error("No resume file returned from storage.");
+
+    const buffer = Buffer.from(await data.arrayBuffer());
+    const filename = resumeUrl.split("/").pop() ?? resumeUrl;
+    const ext = filename.toLowerCase().split(".").pop() ?? "";
+    const mimeType =
+      ext === "pdf"
+        ? "application/pdf"
+        : ext === "docx"
+          ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          : ext === "txt" || ext === "md"
+            ? "text/plain"
+            : "application/octet-stream";
+
+    const text = await extractTextFromFile(buffer, filename, mimeType);
+    return text || undefined;
+  } catch (err) {
+    console.warn(`Resume text extraction failed for "${resumeUrl}" — falling back to generic interview questions.`, err);
+    return undefined;
+  }
 }
 
 /**
@@ -124,6 +154,10 @@ export async function triggerInterview(applicationId: string, options: TriggerIn
       maxAttempts: DEFAULT_INTERVIEW_CONFIG.maxCallAttempts,
     });
 
+    // Extracted once up front (not per question) — grounds every generated
+    // question in the candidate's actual resume where relevant.
+    const resumeText = await fetchCandidateResumeText(candidate.resume_url);
+
     // Persist planned PRIMARY questions upfront so both the mock's
     // synchronous loop and the real Twilio webhook pull from the same list
     // rather than improvising from scratch.
@@ -135,6 +169,7 @@ export async function triggerInterview(applicationId: string, options: TriggerIn
           section: section.name,
           category: section.category ?? null,
           priorTurns: [],
+          resumeText,
         });
         await createInterviewQuestion({
           interviewId: interview.id,

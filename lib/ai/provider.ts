@@ -68,6 +68,11 @@ export interface GenerateQuestionInput {
   section: string;
   category: string | null;
   priorTurns: QuestionAndAnswer[];
+  /** Optional extracted text of the candidate's resume, used to ground the
+   * question in specifics (a named technology, project, or achievement)
+   * rather than a purely generic skill-category question. Undefined when
+   * no resume could be read — callers fall back to generic questions. */
+  resumeText?: string;
 }
 
 export interface EvaluateAnswerInput {

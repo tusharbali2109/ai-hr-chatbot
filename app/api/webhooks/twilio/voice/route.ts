@@ -18,11 +18,14 @@ import {
   computeWeightedInterviewScore,
   decideInterviewRecommendation,
   mapInterviewComponentScores,
+  mapRecommendationToStage,
   DEFAULT_INTERVIEW_RUBRIC_WEIGHTS,
 } from "@/lib/interview/logic";
 import { getAIProvider } from "@/lib/ai";
 import { MODEL } from "@/lib/ai/anthropic-provider";
 import { createWebhookClient } from "@/lib/supabase/webhook-client";
+import { updateApplicationStage } from "@/lib/services/applications";
+import { logInternalEvent } from "@/lib/services/ingestion";
 import type { InterviewAnswer, InterviewQuestion } from "@/lib/types/database";
 
 const { VoiceResponse } = twilio.twiml;
@@ -65,8 +68,50 @@ function buildTranscript(questions: InterviewQuestion[], answers: InterviewAnswe
     });
 }
 
+/** Mirrors the stage-transition + internal-event bookkeeping that
+ * lib/interview/agent.ts's triggerInterview does after a synchronous
+ * (mock-provider) completion — real Twilio calls never run that code
+ * (triggerInterview returns early once the call is placed, since the rest
+ * of the interview plays out entirely through this webhook), so it must
+ * happen here instead once the interview is actually finalized, or the
+ * candidate is left stuck at AI_INTERVIEW forever. */
+async function advanceStageAfterInterviewFinalized(
+  applicationId: string,
+  candidateId: string,
+  jobId: string,
+  interviewId: string,
+  recommendation: string | null,
+  status: string,
+  overallScore: number | null,
+  supabase: SupabaseClient
+): Promise<void> {
+  const finalStage = mapRecommendationToStage(recommendation, status);
+  await updateApplicationStage(
+    applicationId,
+    "AI_INTERVIEW",
+    finalStage,
+    "AI interview completed",
+    { source: "interview", decision_source: "AI", interview_id: interviewId },
+    supabase
+  );
+
+  await logInternalEvent(
+    "candidate.interview.completed",
+    {
+      application_id: applicationId,
+      candidate_id: candidateId,
+      job_id: jobId,
+      payload: { recommendation, overall_score: overallScore },
+    },
+    supabase
+  );
+}
+
 async function finalizeCompletedInterview(
   interviewId: string,
+  applicationId: string,
+  candidateId: string,
+  jobId: string,
   jobTitle: string,
   jobDescription: string,
   screeningCriteria: NonNullable<Awaited<ReturnType<typeof getInterviewContext>>>["screeningCriteria"],
@@ -120,6 +165,8 @@ async function finalizeCompletedInterview(
     supabase
   );
   await logInterviewEvent(interviewId, "EVALUATION_COMPLETED", { recommendation, overall_score: score }, supabase);
+
+  await advanceStageAfterInterviewFinalized(applicationId, candidateId, jobId, interviewId, recommendation, "COMPLETED", score, supabase);
 }
 
 export async function POST(request: Request) {
@@ -162,9 +209,10 @@ export async function POST(request: Request) {
       await logInterviewEvent(interview.id, "CALL_STARTED", { call_sid: callSid }, supabase);
       await logInterviewEvent(interview.id, "AI_INTRO", {}, supabase);
       await updateInterview(interview.id, { status: "IN_PROGRESS", started_at: new Date().toISOString() }, supabase);
+      const personaName = process.env.INTERVIEWER_PERSONA_NAME || "Alex";
       return sayAndGather(
         webhookUrl,
-        `Hi, I'm an AI interview assistant conducting the initial interview for the ${context.jobTitle} position. This interview will be evaluated as part of the recruitment process. Are you comfortable continuing?`
+        `Hi ${context.candidateName}, this is ${personaName} calling from ${context.companyName}. You applied for the ${context.jobTitle} position, and I'll be asking a few questions based on your resume as part of our interview process. This interview will be evaluated as part of the recruitment process. Are you comfortable continuing?`
       );
     }
 
@@ -206,6 +254,16 @@ export async function POST(request: Request) {
           endedAt: new Date().toISOString(),
           durationSeconds: null,
         },
+        supabase
+      );
+      await advanceStageAfterInterviewFinalized(
+        context.applicationId,
+        context.candidateId,
+        context.jobId,
+        interview.id,
+        "NEEDS_REVIEW",
+        "NEEDS_REVIEW",
+        null,
         supabase
       );
       return sayAndHangup("Thank you — that concludes our call today. We'll be in touch about next steps. Goodbye.");
@@ -270,6 +328,9 @@ export async function POST(request: Request) {
     await logInterviewEvent(interview.id, "CALL_ENDED", { reason: decision.reason }, supabase);
     await finalizeCompletedInterview(
       interview.id,
+      context.applicationId,
+      context.candidateId,
+      context.jobId,
       context.jobTitle,
       context.jobDescription,
       context.screeningCriteria,
