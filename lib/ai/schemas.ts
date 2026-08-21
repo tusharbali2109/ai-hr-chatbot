@@ -40,7 +40,10 @@ export const requirementJsonSchema = {
     clarification_options: {
       type: "array",
       items: { type: "string" },
-      description: "2-6 short suggested answers to the clarification question; empty if not needed",
+      description:
+        "2-6 short suggested answers to the clarification question; empty only for genuinely open-ended asks (skills, responsibilities, salary, free-text names). " +
+        "When the question covers a single closed-set field (e.g. work mode), give plain option strings like 'Remote'. " +
+        "When one question bundles 2+ closed-set fields (e.g. employment type + experience level), prefix each option with its field name and a colon, e.g. 'Employment Type: Full-time', 'Experience Level: Entry' — the client groups options by that prefix into separate chip rows.",
     },
   },
   required: [

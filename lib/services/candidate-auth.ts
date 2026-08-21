@@ -55,3 +55,27 @@ export async function linkCandidateAuth(authUserId: string, authEmail: string, c
 
   return { outcome: "linked", candidate: linked as Candidate };
 }
+
+/**
+ * Distinguishes a candidate whose ONLY reason for portal access is a
+ * browser video interview from one who also has an assessment or digital
+ * workday assignment. Used by the auth callback to decide whether to lock
+ * the candidate into /candidate/video-interview only (see proxy.ts) or let
+ * them land on the normal /candidate hub with all three activities.
+ *
+ * Deliberately re-checks with the caller's own (candidate-scoped) client so
+ * this only ever sees rows RLS already allows — same trust boundary as
+ * everything else here, no service-role escalation needed.
+ */
+export async function candidateHasNonInterviewAssignment(candidateId: string, client?: SupabaseClient): Promise<boolean> {
+  const supabase = await resolveClient(client);
+
+  const [{ count: assessmentCount, error: assessmentError }, { count: workdayCount, error: workdayError }] = await Promise.all([
+    supabase.from("assessment_assignments").select("id", { count: "exact", head: true }).eq("candidate_id", candidateId),
+    supabase.from("workday_assignments").select("id", { count: "exact", head: true }).eq("candidate_id", candidateId),
+  ]);
+  if (assessmentError) throw assessmentError;
+  if (workdayError) throw workdayError;
+
+  return (assessmentCount ?? 0) > 0 || (workdayCount ?? 0) > 0;
+}

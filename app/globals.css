@@ -115,3 +115,33 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* Mobile tap-zoom fix ---------------------------------------------------
+   Two separate iOS/Android behaviors were making the viewport visibly
+   "zoom out" after tapping a button:
+   1. Double-tap-to-zoom: without `touch-action: manipulation`, a fast
+      second tap on a button/link is interpreted as a zoom gesture.
+   2. iOS Safari auto-zooms the whole page in on focus of any text
+      input/select/textarea whose computed font-size is under 16px, then
+      snaps back out (looking like a "zoom out") once focus leaves — every
+      form control here uses Tailwind's text-sm (14px), so it qualifies.
+   We fix the root cause instead of disabling pinch-zoom (which would be
+   an accessibility regression): tag interactive elements as
+   non-zoomable-gesture targets, and bump form-control font-size to 16px
+   on small screens only. */
+button,
+a,
+[role="button"],
+summary,
+input[type="checkbox"],
+input[type="radio"] {
+  touch-action: manipulation;
+}
+
+@media (max-width: 767px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}

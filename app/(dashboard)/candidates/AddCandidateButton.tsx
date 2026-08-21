@@ -53,11 +53,11 @@ export function AddCandidateButton({ jobs }: { jobs: { id: string; title: string
   }
 
   async function handleSave() {
-    if (!jobId || !fields.name.trim() || !fields.email.trim()) return;
+    if (!jobId || !fields.name.trim() || !fields.email.trim() || !resumeFile) return;
     setSaving(true);
     try {
       const formData = new FormData();
-      if (resumeFile) formData.set("resume", resumeFile);
+      formData.set("resume", resumeFile);
       const result = await addCandidateAction(
         {
           jobId,
@@ -103,11 +103,14 @@ export function AddCandidateButton({ jobs }: { jobs: { id: string; title: string
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-foreground">Resume (optional — auto-fills the fields below)</label>
+              <label className="mb-1.5 block text-sm font-medium text-foreground">
+                Resume <span className="text-danger">*</span> — auto-fills the fields below
+              </label>
               <input
                 ref={fileInputRef}
                 type="file"
                 accept=".pdf,.docx,.txt,.md"
+                required
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
@@ -116,8 +119,11 @@ export function AddCandidateButton({ jobs }: { jobs: { id: string; title: string
               />
               <Button variant="secondary" onClick={() => fileInputRef.current?.click()} disabled={extracting} className="w-full justify-start">
                 {extracting ? <Sparkles className="h-4 w-4 animate-pulse" /> : <Upload className="h-4 w-4" />}
-                {extracting ? "Reading resume…" : resumeFile ? resumeFile.name : "Choose a file…"}
+                {extracting ? "Reading resume…" : resumeFile ? resumeFile.name : "Choose a file… (required)"}
               </Button>
+              {!resumeFile && (
+                <p className="mt-1.5 text-xs text-muted-foreground">A resume is required — we use it to auto-fill the candidate's details.</p>
+              )}
             </div>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -151,7 +157,7 @@ export function AddCandidateButton({ jobs }: { jobs: { id: string; title: string
               <Button variant="secondary" onClick={resetAndClose}>
                 Cancel
               </Button>
-              <Button onClick={handleSave} disabled={saving || !jobId || !fields.name.trim() || !fields.email.trim()}>
+              <Button onClick={handleSave} disabled={saving || !jobId || !fields.name.trim() || !fields.email.trim() || !resumeFile}>
                 {saving ? "Adding…" : "Add Candidate"}
               </Button>
             </div>

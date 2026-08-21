@@ -35,12 +35,13 @@ export async function extractJdFileTextAction(formData: FormData): Promise<strin
 
 export async function extractRequirementAction(
   rawRequirement: string,
-  overrides: StructuredInputOverrides
+  overrides: StructuredInputOverrides,
+  questionsAsked: number = 1
 ): Promise<RequirementExtraction> {
   if (!isRequirementTextValid(rawRequirement)) {
     throw new Error("Describe the role you're hiring for before continuing.");
   }
-  return getAIProvider().generateStructuredRequirement(rawRequirement, overrides);
+  return getAIProvider().generateStructuredRequirement(rawRequirement, overrides, questionsAsked);
 }
 
 export interface GenerateJdResult {

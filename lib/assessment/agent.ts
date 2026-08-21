@@ -25,6 +25,7 @@ import { isAutomationEnabled } from "@/lib/communication/logic";
 import { sendAssessmentInvitation } from "@/lib/communication/agent";
 import { getAIProvider } from "@/lib/ai";
 import { computeDeadline, type DeadlineConfig } from "@/lib/assessment/logic";
+import type { AssessmentQuestionGeneration } from "@/lib/ai/schemas";
 import type { Assessment } from "@/lib/types/database";
 
 export interface GenerateAssessmentResult {
@@ -87,6 +88,134 @@ export async function generateAssessment(jobId: string): Promise<GenerateAssessm
     await markAgentRunFailed(agentRun.id, message);
     throw new Error(message);
   }
+}
+
+/**
+ * Free-text-instruction-driven variant of generateAssessment (mirrors
+ * improveJdAction's shape but for assessments) — instead of generating
+ * purely from the job's JD/screening criteria, the recruiter's own
+ * description of what the assessment should cover (plus, optionally, text
+ * extracted from an uploaded reference document) drives the question set.
+ * Job context is still supplied so the AI stays grounded in this job's
+ * actual skills. Always produces a new DRAFT, same as generateAssessment.
+ */
+export async function generateAssessmentFromText(
+  jobId: string,
+  instruction: string,
+  sourceDocumentText: string | null = null
+): Promise<GenerateAssessmentResult> {
+  if (!instruction.trim() && !sourceDocumentText) {
+    throw new Error("Describe what the assessment should cover, or attach a reference file to generate questions from.");
+  }
+
+  const { userId, companyId } = await getAuthedCompanyId();
+  await assertJobOwnership(jobId, companyId);
+
+  const job = await getJob(jobId);
+  if (!job) throw new Error("Job not found.");
+  if (job.jd_status !== "APPROVED") {
+    throw new Error("This job needs an approved JD before an assessment can be generated.");
+  }
+
+  if (await hasActiveJobRun("ASSESSMENT_GENERATION", jobId)) {
+    throw new Error("An assessment is already being generated for this job.");
+  }
+
+  const jdVersion = await getApprovedJdVersion(jobId);
+  const agentRun = await createJobAgentRun("ASSESSMENT_GENERATION", jobId);
+  await markAgentRunRunning(agentRun.id, "anthropic");
+
+  try {
+    const generated = await getAIProvider().improveAssessment({
+      jobContext: {
+        jobTitle: job.title,
+        jobDescription: job.description,
+        requiredSkills: job.required_skills,
+        preferredSkills: job.preferred_skills,
+        screeningSummary: null,
+        interviewSummary: null,
+      },
+      currentQuestions: null,
+      instruction: instruction.trim() || "Generate an assessment from the attached reference material.",
+      sourceDocumentText,
+    });
+
+    const assessment = await createAssessmentVersion({
+      jobId,
+      createdBy: userId,
+      title: generated.title,
+      description: generated.description,
+      instructions: generated.instructions,
+      type: generated.type,
+      durationMinutes: generated.duration_minutes,
+      passingScore: generated.passing_score,
+      deadlineConfig: { unit: "DAYS", value: 3 },
+      questions: generated.questions,
+    });
+
+    await markAgentRunCompleted(agentRun.id, { assessment_id: assessment.id, jd_version_id: jdVersion?.id ?? null });
+
+    return { assessment };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Assessment generation failed for an unknown reason.";
+    await markAgentRunFailed(agentRun.id, message);
+    throw new Error(message);
+  }
+}
+
+export interface RegenerateAssessmentQuestionsResult {
+  assessment: Assessment;
+  questions: AssessmentQuestionGeneration[];
+}
+
+/**
+ * Recruiter-instructed revision of an already-generated DRAFT question set
+ * (e.g. "make question 3 harder", "add 2 more questions about React
+ * hooks") — the assessment builder's analog of improveJdAction. Returns the
+ * full revised question list; it does not persist anything itself — the
+ * caller (lib/actions/assessment.ts) enforces the DRAFT-only edit guard and
+ * persists the result via replaceAssessmentQuestions.
+ */
+export async function regenerateAssessmentQuestions(
+  assessmentId: string,
+  instruction: string
+): Promise<RegenerateAssessmentQuestionsResult> {
+  if (!instruction.trim()) throw new Error("Describe how the AI should change the questions.");
+
+  const { companyId } = await getAuthedCompanyId();
+  const assessment = await getAssessment(assessmentId);
+  if (!assessment) throw new Error("Assessment not found.");
+  await assertJobOwnership(assessment.job_id, companyId);
+
+  const job = await getJob(assessment.job_id);
+  if (!job) throw new Error("Job not found.");
+
+  const currentQuestions = await listAssessmentQuestions(assessmentId);
+
+  const generated = await getAIProvider().improveAssessment({
+    jobContext: {
+      jobTitle: job.title,
+      jobDescription: job.description,
+      requiredSkills: job.required_skills,
+      preferredSkills: job.preferred_skills,
+      screeningSummary: null,
+      interviewSummary: null,
+    },
+    currentQuestions: currentQuestions.map((q) => ({
+      sequence: q.sequence,
+      type: q.type,
+      question: q.question,
+      instructions: q.instructions,
+      points: q.points,
+      difficulty: q.difficulty,
+      options: q.options,
+      expected_answer: q.expected_answer,
+      evaluation_criteria: q.evaluation_criteria ?? "",
+    })),
+    instruction,
+  });
+
+  return { assessment, questions: generated.questions };
 }
 
 /** Recruiter approval gate — only a DRAFT/READY assessment with every

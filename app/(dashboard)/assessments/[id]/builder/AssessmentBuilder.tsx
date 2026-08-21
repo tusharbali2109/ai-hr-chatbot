@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowUp, ArrowDown, Plus, Trash2, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, ArrowUp, ArrowDown, Plus, Trash2, CheckCircle2, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -16,6 +16,7 @@ import {
   deleteAssessmentQuestionAction,
   reorderQuestionsAction,
   approveAssessmentAction,
+  regenerateAssessmentQuestionsAction,
 } from "@/lib/actions/assessment";
 import { DEADLINE_PRESETS, formatDeadlineConfig } from "@/lib/assessment/logic";
 import type { Assessment, AssessmentQuestion, AssessmentQuestionType, QuestionDifficulty } from "@/lib/types/database";
@@ -84,6 +85,8 @@ export function AssessmentBuilder({
   const [savingMeta, setSavingMeta] = useState(false);
   const [approving, setApproving] = useState(false);
   const [editingDraft, setEditingDraft] = useState<QuestionDraft | null>(null);
+  const [regenerateInstruction, setRegenerateInstruction] = useState("");
+  const [regenerating, setRegenerating] = useState(false);
 
   const editable = assessment.status === "DRAFT";
 
@@ -155,6 +158,21 @@ export function AssessmentBuilder({
       await reorderQuestionsAction(assessment.id, next.map((q) => q.id));
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Failed to reorder.", "danger");
+    }
+  }
+
+  async function handleRegenerate() {
+    if (!regenerateInstruction.trim()) return;
+    setRegenerating(true);
+    try {
+      const saved = await regenerateAssessmentQuestionsAction(assessment.id, regenerateInstruction);
+      setQuestions([...saved].sort((a, b) => a.sequence - b.sequence));
+      setRegenerateInstruction("");
+      showToast("Questions regenerated. Review the changes below before approving.", "success");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to regenerate questions.", "danger");
+    } finally {
+      setRegenerating(false);
     }
   }
 
@@ -259,6 +277,28 @@ export function AssessmentBuilder({
           </div>
         )}
       </div>
+
+      {editable && (
+        <div className="mb-6 flex flex-col gap-3 rounded-[var(--radius-lg)] border border-border bg-surface p-5">
+          <h3 className="text-sm font-semibold text-foreground">Regenerate with instructions</h3>
+          <p className="text-xs text-muted-foreground">
+            Tell the AI how to change the question set — e.g. &quot;make question 3 harder&quot; or &quot;add 2 more questions about React
+            hooks&quot;. This replaces the entire question list below with the AI&apos;s revised version; review it before approving.
+          </p>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Input
+              value={regenerateInstruction}
+              onChange={(e) => setRegenerateInstruction(e.target.value)}
+              placeholder="e.g. Add 2 more questions about React hooks"
+              className="flex-1"
+            />
+            <Button onClick={handleRegenerate} disabled={regenerating || !regenerateInstruction.trim()}>
+              <Sparkles className="h-3.5 w-3.5" />
+              {regenerating ? "Regenerating…" : "Regenerate"}
+            </Button>
+          </div>
+        </div>
+      )}
 
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-foreground">Questions ({questions.length})</h3>

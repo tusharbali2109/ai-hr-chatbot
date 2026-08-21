@@ -13,11 +13,43 @@ import { ReviewStep } from "../../jobs/new/ReviewStep";
 
 const STARTER_ROLES = ["Software Engineer", "Sales Executive", "HR Manager"];
 
+/** Hard cap on the whole conversation — see MAX_QUESTIONS note on runExtraction. */
+const MAX_QUESTIONS = 5;
+
 interface ChatMessage {
   id: string;
   role: "bot" | "user";
   text: string;
   chips?: string[];
+}
+
+interface ChipGroup {
+  group: string;
+  options: string[];
+}
+
+/**
+ * Chip options come back flat (RequirementExtraction.clarification_options). When a single
+ * question bundles 2+ closed-set fields, the AI prefixes each option as "Field Name: value"
+ * (see REQUIREMENT_SYSTEM_PROMPT) — group them into separate labeled chip rows. If any option
+ * doesn't follow that convention, or there's only one distinct prefix, fall back to a single
+ * flat row (the original one-tap-submits behavior).
+ */
+function groupChipOptions(chips: string[]): ChipGroup[] | null {
+  if (chips.length === 0) return null;
+  const parsed: { group: string; value: string }[] = [];
+  for (const chip of chips) {
+    const idx = chip.indexOf(": ");
+    if (idx === -1) return null;
+    parsed.push({ group: chip.slice(0, idx).trim(), value: chip.slice(idx + 2).trim() });
+  }
+  const groups: ChipGroup[] = [];
+  for (const { group, value } of parsed) {
+    const existing = groups.find((g) => g.group === group);
+    if (existing) existing.options.push(value);
+    else groups.push({ group, options: [value] });
+  }
+  return groups.length >= 2 ? groups : null;
 }
 
 function summarizeUnderstanding(req: RequirementExtraction): string {
@@ -56,6 +88,14 @@ export function JdMakerChat() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ jobId: string; jd: JDGeneration } | null>(null);
+  // Counts questions already put to the recruiter, starting at 1 for the fixed opening
+  // "what role are you hiring for?" message above — the whole conversation is capped at
+  // MAX_QUESTIONS. This is the client-side backstop: enforced in runExtraction below even if
+  // the AI's own clarification_needed ignores the budget it was told about.
+  const [questionsAsked, setQuestionsAsked] = useState(1);
+  // Pending taps on the current grouped-chip question (group label -> chosen value), cleared
+  // whenever a new question is shown or submitted.
+  const [groupSelections, setGroupSelections] = useState<Record<string, string>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -75,16 +115,23 @@ export function JdMakerChat() {
     setInput("");
     setBusy(false);
     setResult(null);
+    setQuestionsAsked(1);
+    setGroupSelections({});
   }
 
   async function runExtraction(combinedText: string) {
     setBusy(true);
+    setGroupSelections({});
     try {
-      const extracted = await extractRequirementAction(combinedText, overrides);
+      const extracted = await extractRequirementAction(combinedText, overrides, questionsAsked);
       setRawRequirement(combinedText);
       setRequirement(extracted);
 
-      if (extracted.clarification_needed && extracted.clarification_question) {
+      // Hard cap: never ask a 6th question, even if the AI still wants to clarify something.
+      const budgetLeft = questionsAsked < MAX_QUESTIONS;
+
+      if (budgetLeft && extracted.clarification_needed && extracted.clarification_question) {
+        setQuestionsAsked((n) => n + 1);
         addMessage({ role: "bot", text: extracted.clarification_question, chips: extracted.clarification_options });
         setAwaitingGenerateConfirm(false);
       } else {
@@ -131,6 +178,21 @@ export function JdMakerChat() {
 
     addMessage({ role: "user", text: chip });
     const combined = rawRequirement ? `${rawRequirement}\n\n${chip}` : chip;
+    void runExtraction(combined);
+  }
+
+  /** Tap a chip within one labeled group of a bundled question (e.g. "Work Mode: Remote"). */
+  function toggleGroupOption(group: string, value: string) {
+    setGroupSelections((prev) => ({ ...prev, [group]: value }));
+  }
+
+  /** Submits whichever groups the recruiter picked in a bundled question; unpicked groups are left for the AI to ask about later if it still has budget. */
+  function submitGroupSelections(groups: ChipGroup[]) {
+    const answered = groups.filter((g) => groupSelections[g.group]);
+    if (answered.length === 0 || busy) return;
+    const lines = answered.map((g) => `${g.group}: ${groupSelections[g.group]}`);
+    addMessage({ role: "user", text: lines.join(", ") });
+    const combined = rawRequirement ? `${rawRequirement}\n\n${lines.join("\n")}` : lines.join("\n");
     void runExtraction(combined);
   }
 
@@ -220,46 +282,93 @@ export function JdMakerChat() {
               <span className="h-1.5 w-1.5 rounded-full bg-success" />
               Live session
             </div>
-            <span className="text-xs text-muted-foreground">{messages.length} message{messages.length === 1 ? "" : "s"}</span>
+            <span className="text-xs text-muted-foreground">
+              {result ? `${messages.length} message${messages.length === 1 ? "" : "s"}` : `Question ${Math.min(questionsAsked, MAX_QUESTIONS)} of ${MAX_QUESTIONS}`}
+            </span>
           </div>
 
           <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4">
             <div className="flex flex-col gap-4">
-              {messages.map((msg) => (
-                <div key={msg.id} className={msg.role === "user" ? "flex justify-end" : "flex items-start gap-2.5"}>
-                  {msg.role === "bot" && (
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground">
-                      <Bot className="h-3.5 w-3.5" />
-                    </span>
-                  )}
-                  <div className={msg.role === "user" ? "max-w-[75%]" : "max-w-[75%]"}>
-                    <div
-                      className={
-                        msg.role === "user"
-                          ? "rounded-[var(--radius-lg)] rounded-tr-sm bg-accent px-4 py-2.5 text-sm text-accent-foreground"
-                          : "rounded-[var(--radius-lg)] rounded-tl-sm border border-border bg-surface-elevated px-4 py-2.5 text-sm text-foreground whitespace-pre-line"
-                      }
-                    >
-                      {msg.text}
-                    </div>
-                    {msg.chips && msg.chips.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {msg.chips.map((chip) => (
-                          <button
-                            key={chip}
-                            type="button"
-                            disabled={busy}
-                            onClick={() => handleChip(chip)}
-                            className="rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
-                          >
-                            {chip}
-                          </button>
-                        ))}
-                      </div>
+              {messages.map((msg, index) => {
+                const isLast = index === messages.length - 1;
+                const groups = msg.chips ? groupChipOptions(msg.chips) : null;
+                return (
+                  <div key={msg.id} className={msg.role === "user" ? "flex justify-end" : "flex items-start gap-2.5"}>
+                    {msg.role === "bot" && (
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground">
+                        <Bot className="h-3.5 w-3.5" />
+                      </span>
                     )}
+                    <div className={msg.role === "user" ? "max-w-[75%]" : "max-w-[75%]"}>
+                      <div
+                        className={
+                          msg.role === "user"
+                            ? "rounded-[var(--radius-lg)] rounded-tr-sm bg-accent px-4 py-2.5 text-sm text-accent-foreground"
+                            : "rounded-[var(--radius-lg)] rounded-tl-sm border border-border bg-surface-elevated px-4 py-2.5 text-sm text-foreground whitespace-pre-line"
+                        }
+                      >
+                        {msg.text}
+                      </div>
+
+                      {groups && (
+                        <div className="mt-3 flex flex-col gap-2.5 rounded-[var(--radius-lg)] border border-border bg-surface p-3">
+                          {groups.map((g) => (
+                            <div key={g.group}>
+                              <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{g.group}</p>
+                              <div className="flex flex-wrap gap-2">
+                                {g.options.map((opt) => {
+                                  const selected = isLast && groupSelections[g.group] === opt;
+                                  return (
+                                    <button
+                                      key={opt}
+                                      type="button"
+                                      disabled={busy || !isLast}
+                                      onClick={() => toggleGroupOption(g.group, opt)}
+                                      className={
+                                        selected
+                                          ? "rounded-full border border-accent bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground transition-colors disabled:opacity-50"
+                                          : "rounded-full border border-border bg-surface-elevated px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
+                                      }
+                                    >
+                                      {opt}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                          {isLast && (
+                            <Button
+                              size="sm"
+                              onClick={() => submitGroupSelections(groups)}
+                              disabled={busy || Object.keys(groupSelections).length === 0}
+                              className="mt-1 self-start"
+                            >
+                              Continue
+                            </Button>
+                          )}
+                        </div>
+                      )}
+
+                      {!groups && msg.chips && msg.chips.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {msg.chips.map((chip) => (
+                            <button
+                              key={chip}
+                              type="button"
+                              disabled={busy || !isLast}
+                              onClick={() => handleChip(chip)}
+                              className="rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
+                            >
+                              {chip}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
 
               {busy && (
                 <div className="flex items-center gap-2.5">

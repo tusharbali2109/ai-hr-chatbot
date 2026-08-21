@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Mail, Phone, MapPin, Link2, Globe, FileText, CheckCircle2, XCircle, HelpCircle } from "lucide-react";
 import { getCandidate, getResumeSignedUrl, listCandidateApplications } from "@/lib/services/candidates";
+import { getCurrentUserProfile } from "@/lib/services/auth";
 import { listStageHistory } from "@/lib/services/applications";
 import { getLatestScreening } from "@/lib/services/screening";
 import { getLatestInterview } from "@/lib/services/interviews";
@@ -21,6 +22,7 @@ import { AssessmentActions } from "./AssessmentActions";
 import { InterviewSchedulingActions } from "./InterviewSchedulingActions";
 import { WhatsAppButton } from "./WhatsAppButton";
 import { MobileNextActionBar } from "./MobileNextActionBar";
+import { DeleteCandidateButton } from "./DeleteCandidateButton";
 
 const REQUIREMENT_STATUS_ICON: Record<string, typeof CheckCircle2> = {
   MATCH: CheckCircle2,
@@ -39,6 +41,9 @@ export default async function CandidateDetailPage({ params }: PageProps<"/candid
 
   const candidate = await getCandidate(id);
   if (!candidate) notFound();
+
+  const currentUser = await getCurrentUserProfile().catch(() => null);
+  const isAdmin = currentUser?.role === "admin";
 
   const resumeHref = await getResumeSignedUrl(candidate.resume_url);
 
@@ -166,6 +171,7 @@ export default async function CandidateDetailPage({ params }: PageProps<"/candid
               stage={primaryApplication.current_stage}
             />
           )}
+          {isAdmin && <DeleteCandidateButton candidateId={candidate.id} candidateName={candidate.name} />}
         </div>
       </div>
 

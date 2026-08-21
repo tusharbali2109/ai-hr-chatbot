@@ -9,6 +9,7 @@ import type {
   GenerateFollowUpInput,
   EvaluateInterviewInput,
   GenerateAssessmentInput,
+  ImproveAssessmentInput,
   EvaluateAssessmentAnswerInput,
   ReviewOpenEndedSubmissionInput,
   EvaluateWorkdayTaskInput,
@@ -113,13 +114,23 @@ async function callStructured<T>(
   );
 }
 
-const REQUIREMENT_SYSTEM_PROMPT = `You are the Requirement Agent inside an AI recruitment platform. Extract structured hiring requirements from a recruiter's natural-language description.
+const REQUIREMENT_SYSTEM_PROMPT = `You are the Requirement Agent inside an AI recruitment platform. Extract structured hiring requirements from a recruiter's natural-language description, and — within a strict question budget — ask for whatever is still missing.
 
 Rules:
 - Never invent information the recruiter did not provide or imply. If something is not specified, use the literal string "Not specified" (or null for numeric fields), never a guess.
 - experience_min/experience_max are years of experience, integers only, or null if not mentioned.
-- Only set clarification_needed to true if the role/domain is genuinely too vague to draft a job description from (e.g. "need a developer" with no domain at all). Do not ask for clarification just because optional details like salary or work mode are missing.
-- When clarification_needed is true, clarification_question should be one short, specific question, and clarification_options should offer 2-6 concrete short answers (e.g. role families like Frontend, Backend, Full Stack, Mobile, DevOps, Data).`;
+
+Question budget (HARD LIMIT):
+- The recruiter's user prompt tells you "Questions asked so far" out of a maximum of 5 for the ENTIRE conversation, counting the very first "what role are you hiring for?" question the UI already asked before you were ever called.
+- If questions asked so far is already 5 (or more), you MUST set clarification_needed to false no matter what is still missing — fill anything unknown with "Not specified"/null and let the recruiter add more later. Never exceed the budget.
+- Otherwise only set clarification_needed to true if asking is worth spending one of the few remaining questions. Do not ask just to be thorough — every question costs budget.
+- Across whatever questions you do ask, prioritize covering (in roughly this order, combining categories into one question when they fit together): (1) department and location, (2) employment type + experience level + work mode together, (3) key responsibilities and must-have skills, (4) nice-to-haves and salary range. Skip a category if the recruiter already gave it or if you're out of budget — never ask about something already answered.
+- When clarification_needed is true, clarification_question is one short, natural question (it may ask about more than one thing at once, e.g. "What employment type, experience level, and work mode is this?").
+
+Clarification chips — strongly prefer clickable options over free text:
+- For any field with a known closed set of values, ALWAYS populate clarification_options so the recruiter can tap instead of type: employment_type ("Full-time", "Part-time", "Contract", "Internship"), experience level ("Entry", "Mid", "Senior", "Lead"), work_mode ("Remote", "Hybrid", "Onsite"). Never leave these fields as open free-text questions when you have a spare question to ask about them.
+- If a single question bundles 2+ closed-set fields, prefix every option with its field name and a colon, e.g. clarification_options: ["Employment Type: Full-time", "Employment Type: Part-time", "Employment Type: Contract", "Employment Type: Internship", "Experience Level: Entry", "Experience Level: Mid", "Experience Level: Senior", "Experience Level: Lead", "Work Mode: Remote", "Work Mode: Hybrid", "Work Mode: Onsite"]. The client groups these by prefix into separate chip rows; the recruiter can still type a free-text answer instead.
+- Only leave clarification_options empty for genuinely open-ended asks with no fixed set of answers: role title/domain, department name, city/location, must-have skills, responsibilities, nice-to-have skills, salary range. Even then you may suggest 2-6 short illustrative options (e.g. common skills for that role) if it plausibly helps, but never invent a fake "closed set" for something that isn't one.`;
 
 const JD_SYSTEM_PROMPT = `You are the JD Generation Agent inside an AI recruitment platform. Turn a structured hiring requirement into a professional, concise, candidate-friendly job description.
 
@@ -281,6 +292,37 @@ function buildAssessmentGenerationUserPrompt(input: GenerateAssessmentInput): st
     .join("\n\n");
 }
 
+const IMPROVE_ASSESSMENT_SYSTEM_PROMPT = `You are the Assessment Agent inside an AI recruitment platform, generating or revising a job-specific skills assessment per a recruiter's free-text instruction.
+
+Rules:
+- If "Current questions" is absent, generate a brand new assessment grounded in the job context AND the recruiter's instruction below — the instruction describes what this assessment should specifically cover (e.g. "5 SQL questions and 2 system design questions") and takes priority over generic defaults.
+- If "Current questions" is provided, revise that exact set per the instruction — keep every question not implicated by the instruction unchanged (same wording, points, type, etc.), and change only what the instruction asks for (e.g. "make question 3 harder", "add 2 more questions about React hooks").
+- When reference material (an uploaded document, e.g. an existing question bank or brief) is supplied, treat it as the primary source for question content/style — extract or adapt real questions from it rather than inventing unrelated ones — while still following the recruiter's instruction and the job context.
+- Choose the assessment "type" based on what this specific role actually needs — do not default to CODING or TECHNICAL unless the role genuinely requires it.
+- Every question must carry points > 0 that reflect its relative importance/difficulty, and a concrete, specific evaluation_criteria string an evaluator can actually apply — never something vague like "assess quality".
+- Set expected_answer when there is a reasonably objective reference answer; leave it null for genuinely open-ended questions where evaluation_criteria alone should guide grading.
+- MCQ questions must include 2-6 concrete options, with the correct one identifiable from expected_answer (exact text match to one of the options).
+- Never ask about protected characteristics or anything not job-relevant.
+- Return the FULL assessment (title, description, instructions, type, duration_minutes, passing_score, and the complete ordered question list) per the schema — never a partial diff.`;
+
+function buildImproveAssessmentUserPrompt(input: ImproveAssessmentInput): string {
+  return [
+    `Job: ${input.jobContext.jobTitle}`,
+    `Job description:\n"""\n${input.jobContext.jobDescription}\n"""`,
+    `Required skills: ${input.jobContext.requiredSkills.join(", ") || "None specified"}`,
+    `Preferred skills: ${input.jobContext.preferredSkills.join(", ") || "None specified"}`,
+    input.jobContext.screeningSummary ? `Screening summary:\n${input.jobContext.screeningSummary}` : "",
+    input.jobContext.interviewSummary ? `Interview summary:\n${input.jobContext.interviewSummary}` : "",
+    input.currentQuestions && input.currentQuestions.length > 0
+      ? `Current questions (revise these per the instruction, keep everything not mentioned unchanged):\n${JSON.stringify(input.currentQuestions, null, 2)}`
+      : "No current questions — generate a brand new assessment from the instruction below.",
+    input.sourceDocumentText ? `Reference material uploaded by the recruiter (primary source for question content):\n"""\n${input.sourceDocumentText}\n"""` : "",
+    `Recruiter instruction:\n"""\n${input.instruction}\n"""`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 const ASSESSMENT_QUESTION_EVALUATION_SYSTEM_PROMPT = `You are the Assessment Evaluation Agent, grading exactly ONE candidate answer to ONE assessment question.
 
 Rules:
@@ -363,15 +405,19 @@ Rules:
 - If multiple emails or phone numbers appear, prefer the one that reads as the candidate's primary/personal contact (not a reference's or previous employer's).`;
 
 export const anthropicProvider: AIProvider = {
-  async generateStructuredRequirement(rawRequirement, overrides: StructuredInputOverrides) {
+  async generateStructuredRequirement(rawRequirement, overrides: StructuredInputOverrides, questionsAsked = 1) {
     const overrideLines = Object.entries(overrides)
       .filter(([, v]) => v !== undefined && v !== "")
       .map(([k, v]) => `${k}: ${v}`)
       .join("\n");
 
+    const remaining = Math.max(0, 5 - questionsAsked);
     const userPrompt = [
       `Hiring requirement (recruiter's own words):\n"""\n${rawRequirement}\n"""`,
       overrideLines ? `\nRecruiter-provided structured fields (these are authoritative — use them as-is, do not contradict them):\n${overrideLines}` : "",
+      `\nQuestions asked so far (including the initial "what role are you hiring for?" question): ${questionsAsked} of a maximum 5. You have ${remaining} question(s) left in the budget. ${
+        remaining <= 0 ? "You are OUT OF BUDGET — clarification_needed MUST be false." : ""
+      }`,
     ].join("\n");
 
     return callStructured(REQUIREMENT_SYSTEM_PROMPT, userPrompt, requirementJsonSchema, (raw) =>
@@ -434,6 +480,13 @@ export const anthropicProvider: AIProvider = {
   async generateAssessment(input) {
     const userPrompt = buildAssessmentGenerationUserPrompt(input);
     return callStructured(ASSESSMENT_GENERATION_SYSTEM_PROMPT, userPrompt, assessmentGenerationJsonSchema, (raw) =>
+      AssessmentGenerationSchema.parse(raw)
+    ) as Promise<AssessmentGeneration>;
+  },
+
+  async improveAssessment(input) {
+    const userPrompt = buildImproveAssessmentUserPrompt(input);
+    return callStructured(IMPROVE_ASSESSMENT_SYSTEM_PROMPT, userPrompt, assessmentGenerationJsonSchema, (raw) =>
       AssessmentGenerationSchema.parse(raw)
     ) as Promise<AssessmentGeneration>;
   },

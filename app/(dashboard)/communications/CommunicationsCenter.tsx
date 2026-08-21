@@ -54,8 +54,19 @@ const INTERVIEW_STATUS_TONE: Record<string, "neutral" | "info" | "success" | "wa
 const TABS = ["Emails", "Calendar", "Interviews", "Reminders", "Failures"] as const;
 type Tab = (typeof TABS)[number];
 
+const PAGE_SIZE = 15;
+
 export function CommunicationsCenter({ emails, interviews }: { emails: EmailRow[]; interviews: InterviewRow[] }) {
   const [tab, setTab] = useState<Tab>("Emails");
+  // Each tab keeps its own "how many rows are visible" counter, so
+  // switching tabs doesn't reset a page you'd already expanded.
+  const [visibleCount, setVisibleCount] = useState<Record<Tab, number>>({
+    Emails: PAGE_SIZE,
+    Calendar: PAGE_SIZE,
+    Interviews: PAGE_SIZE,
+    Reminders: PAGE_SIZE,
+    Failures: PAGE_SIZE,
+  });
 
   const [nowMs] = useState(() => Date.now());
   const failures = emails.filter((e) => e.status === "FAILED" || e.status === "BOUNCED");
@@ -69,6 +80,10 @@ export function CommunicationsCenter({ emails, interviews }: { emails: EmailRow[
     Reminders: reminded.length,
     Failures: failures.length,
   };
+
+  function loadMore(t: Tab) {
+    setVisibleCount((prev) => ({ ...prev, [t]: prev[t] + PAGE_SIZE }));
+  }
 
   return (
     <div>
@@ -93,66 +108,81 @@ export function CommunicationsCenter({ emails, interviews }: { emails: EmailRow[
         (emails.length === 0 ? (
           <EmptyState icon={Mail} title="No emails yet" description="Automated emails will appear here as they're sent." />
         ) : (
-          <RowList>
-            {emails.map((e) => (
-              <EmailRowView key={e.id} email={e} />
-            ))}
-          </RowList>
+          <>
+            <RowList>
+              {emails.slice(0, visibleCount.Emails).map((e) => (
+                <EmailRowView key={e.id} email={e} />
+              ))}
+            </RowList>
+            <LoadMore total={emails.length} visible={visibleCount.Emails} onClick={() => loadMore("Emails")} />
+          </>
         ))}
 
       {tab === "Calendar" &&
         (upcoming.length === 0 ? (
           <EmptyState icon={CalendarDays} title="No upcoming interviews" description="Confirmed interviews will appear here." />
         ) : (
-          <RowList>
-            {upcoming.map((i) => (
-              <InterviewRowView key={i.id} interview={i} />
-            ))}
-          </RowList>
+          <>
+            <RowList>
+              {upcoming.slice(0, visibleCount.Calendar).map((i) => (
+                <InterviewRowView key={i.id} interview={i} />
+              ))}
+            </RowList>
+            <LoadMore total={upcoming.length} visible={visibleCount.Calendar} onClick={() => loadMore("Calendar")} />
+          </>
         ))}
 
       {tab === "Interviews" &&
         (interviews.length === 0 ? (
           <EmptyState icon={Users} title="No interviews scheduled" description="Interview bookings will appear here." />
         ) : (
-          <RowList>
-            {interviews.map((i) => (
-              <InterviewRowView key={i.id} interview={i} />
-            ))}
-          </RowList>
+          <>
+            <RowList>
+              {interviews.slice(0, visibleCount.Interviews).map((i) => (
+                <InterviewRowView key={i.id} interview={i} />
+              ))}
+            </RowList>
+            <LoadMore total={interviews.length} visible={visibleCount.Interviews} onClick={() => loadMore("Interviews")} />
+          </>
         ))}
 
       {tab === "Reminders" &&
         (reminded.length === 0 ? (
           <EmptyState icon={BellRing} title="No reminders sent yet" description="24h/2h interview reminders will appear here." />
         ) : (
-          <RowList>
-            {reminded.map((i) => (
-              <div key={i.id} className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-md)] px-3 py-2.5 hover:bg-surface-elevated">
-                <div>
-                  <p className="text-sm text-foreground">
-                    {i.candidateName ?? "Candidate"} — {i.jobTitle ?? "Interview"}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {i.reminder24hSentAt && `24h reminder sent ${new Date(i.reminder24hSentAt).toLocaleString()}`}
-                    {i.reminder24hSentAt && i.reminder2hSentAt && " · "}
-                    {i.reminder2hSentAt && `2h reminder sent ${new Date(i.reminder2hSentAt).toLocaleString()}`}
-                  </p>
+          <>
+            <RowList>
+              {reminded.slice(0, visibleCount.Reminders).map((i) => (
+                <div key={i.id} className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-md)] px-3 py-2.5 hover:bg-surface-elevated">
+                  <div>
+                    <p className="text-sm text-foreground">
+                      {i.candidateName ?? "Candidate"} — {i.jobTitle ?? "Interview"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {i.reminder24hSentAt && `24h reminder sent ${new Date(i.reminder24hSentAt).toLocaleString()}`}
+                      {i.reminder24hSentAt && i.reminder2hSentAt && " · "}
+                      {i.reminder2hSentAt && `2h reminder sent ${new Date(i.reminder2hSentAt).toLocaleString()}`}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </RowList>
+              ))}
+            </RowList>
+            <LoadMore total={reminded.length} visible={visibleCount.Reminders} onClick={() => loadMore("Reminders")} />
+          </>
         ))}
 
       {tab === "Failures" &&
         (failures.length === 0 ? (
           <EmptyState icon={AlertTriangle} title="No failures" description="Failed or bounced emails will appear here." />
         ) : (
-          <RowList>
-            {failures.map((e) => (
-              <EmailRowView key={e.id} email={e} />
-            ))}
-          </RowList>
+          <>
+            <RowList>
+              {failures.slice(0, visibleCount.Failures).map((e) => (
+                <EmailRowView key={e.id} email={e} />
+              ))}
+            </RowList>
+            <LoadMore total={failures.length} visible={visibleCount.Failures} onClick={() => loadMore("Failures")} />
+          </>
         ))}
     </div>
   );
@@ -160,6 +190,21 @@ export function CommunicationsCenter({ emails, interviews }: { emails: EmailRow[
 
 function RowList({ children }: { children: React.ReactNode }) {
   return <div className="flex flex-col divide-y divide-border rounded-[var(--radius-lg)] border border-border bg-surface p-2">{children}</div>;
+}
+
+function LoadMore({ total, visible, onClick }: { total: number; visible: number; onClick: () => void }) {
+  if (visible >= total) return null;
+  const remaining = total - visible;
+  return (
+    <div className="mt-3 flex justify-center">
+      <button
+        onClick={onClick}
+        className="rounded-[var(--radius-md)] border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground transition-colors duration-[var(--duration-fast)] hover:bg-surface-elevated"
+      >
+        Load more ({Math.min(remaining, PAGE_SIZE)} of {remaining})
+      </button>
+    </div>
+  );
 }
 
 function EmailRowView({ email }: { email: EmailRow }) {

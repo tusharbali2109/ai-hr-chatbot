@@ -14,7 +14,14 @@ const CAREERS_PREFIX = "/careers";
  * never be redirected into /dashboard, and an unauthenticated visitor to
  * /candidate/* must land on /candidate/login, not the recruiter /login. */
 const CANDIDATE_PREFIX = "/candidate";
-const CANDIDATE_PUBLIC_PATHS = ["/candidate/login", "/candidate/auth/callback"];
+const CANDIDATE_PUBLIC_PATHS = ["/candidate/login", "/candidate/auth/callback", "/candidate/pending-approval"];
+
+/** Paths an "interview_only" candidate (see the `candidate_track` cookie set
+ * in app/candidate/auth/callback/route.ts) is allowed to reach — everything
+ * else under /candidate/* bounces back to the interview. This is the "no
+ * dashboard, no other candidate pages reachable" requirement: a candidate
+ * whose sole eligibility is the AI video interview should see nothing else. */
+const INTERVIEW_ONLY_ALLOWED_PREFIXES = ["/candidate/video-interview", ...CANDIDATE_PUBLIC_PATHS];
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -63,6 +70,14 @@ export async function proxy(request: NextRequest) {
 
     if (user && pathname === "/candidate/login") {
       return NextResponse.redirect(new URL("/candidate", request.url));
+    }
+
+    if (user) {
+      const track = request.cookies.get("candidate_track")?.value;
+      const isAllowedForInterviewOnly = INTERVIEW_ONLY_ALLOWED_PREFIXES.some((path) => pathname.startsWith(path));
+      if (track === "interview_only" && !isAllowedForInterviewOnly) {
+        return NextResponse.redirect(new URL("/candidate/video-interview", request.url));
+      }
     }
 
     return response;

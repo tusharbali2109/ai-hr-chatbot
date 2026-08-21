@@ -311,6 +311,44 @@ export async function upsertAssessmentQuestion(input: UpsertQuestionInput, clien
   return data as AssessmentQuestion;
 }
 
+/** Wholesale replacement of a DRAFT assessment's question set — used by the
+ * "regenerate with instructions" builder flow, which asks the AI to revise
+ * the full ordered list at once (mirrors createAssessmentVersion's insert
+ * shape) rather than one question at a time via upsertAssessmentQuestion.
+ * Caller (lib/actions/assessment.ts) enforces the DRAFT-only edit guard. */
+export async function replaceAssessmentQuestions(
+  assessmentId: string,
+  questions: AssessmentQuestionGeneration[],
+  client?: SupabaseClient
+): Promise<AssessmentQuestion[]> {
+  const supabase = await resolveClient(client);
+
+  const { error: deleteError } = await supabase.from("assessment_questions").delete().eq("assessment_id", assessmentId);
+  if (deleteError) throw deleteError;
+
+  if (questions.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from("assessment_questions")
+    .insert(
+      questions.map((q) => ({
+        assessment_id: assessmentId,
+        sequence: q.sequence,
+        type: q.type,
+        question: q.question,
+        instructions: q.instructions,
+        points: q.points,
+        difficulty: q.difficulty,
+        options: q.options,
+        expected_answer: q.expected_answer,
+        evaluation_criteria: q.evaluation_criteria,
+      }))
+    )
+    .select("*");
+  if (error) throw error;
+  return (data ?? []) as AssessmentQuestion[];
+}
+
 export async function deleteAssessmentQuestion(questionId: string, client?: SupabaseClient): Promise<void> {
   const supabase = await resolveClient(client);
   const { error } = await supabase.from("assessment_questions").delete().eq("id", questionId);

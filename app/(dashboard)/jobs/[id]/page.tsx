@@ -5,6 +5,7 @@ import { listJobPostings, getJobPostingActivity } from "@/lib/services/jobboards
 import { listLatestRecommendations } from "@/lib/services/screening";
 import { getLatestAssessmentForJob, getAssignmentStatsForJob } from "@/lib/services/assessments";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUserProfile } from "@/lib/services/auth";
 import { JobDetailTabs } from "./JobDetailTabs";
 import type { RecruitmentStage } from "@/lib/stages";
 
@@ -40,6 +41,9 @@ export default async function JobDetailPage({ params }: PageProps<"/jobs/[id]">)
   const assessment = await getLatestAssessmentForJob(id);
   const assessmentStats = assessment ? await getAssignmentStatsForJob(id) : null;
 
+  const currentUser = await getCurrentUserProfile().catch(() => null);
+  const isAdmin = currentUser?.role === "admin";
+
   return (
     <JobDetailTabs
       job={job}
@@ -50,6 +54,7 @@ export default async function JobDetailPage({ params }: PageProps<"/jobs/[id]">)
       recommendations={Object.fromEntries(recommendations)}
       assessment={assessment}
       assessmentStats={assessmentStats}
+      isAdmin={isAdmin}
     />
   );
 }

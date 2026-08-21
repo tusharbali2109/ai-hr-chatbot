@@ -6,6 +6,7 @@ import { getAuthedCompanyId, assertJobOwnership } from "@/lib/services/jd";
 import { ingestApplicant, type IngestResult } from "@/lib/services/ingestion";
 import { getAIProvider } from "@/lib/ai";
 import type { ResumeCandidateExtraction } from "@/lib/ai/schemas";
+import { requireAdmin } from "@/lib/services/auth";
 
 const MAX_RESUME_BYTES = 10 * 1024 * 1024;
 
@@ -52,21 +53,26 @@ export async function addCandidateAction(input: AddCandidateInput, formData: For
   if (!input.name.trim()) throw new Error("Candidate name is required.");
   if (!input.email.trim() || !input.email.includes("@")) throw new Error("A valid email is required.");
 
+  // Resume is mandatory — the recruiter always expects candidate data to be
+  // auto-extracted from it (extractCandidateFromResumeAction above), so a
+  // candidate with no resume on file would silently break that expectation.
+  // Enforced here server-side; AddCandidateButton.tsx enforces it client-side too.
+  const file = formData.get("resume");
+  if (!(file instanceof File) || file.size === 0) {
+    throw new Error("A resume file is required to add a candidate.");
+  }
+  if (file.size > MAX_RESUME_BYTES) throw new Error("Resume exceeds the 10MB limit.");
+
   const { companyId } = await getAuthedCompanyId();
   await assertJobOwnership(input.jobId, companyId);
 
   const supabase = await createClient();
 
-  let resumePath: string | null = null;
-  const file = formData.get("resume");
-  if (file instanceof File && file.size > 0) {
-    if (file.size > MAX_RESUME_BYTES) throw new Error("Resume exceeds the 10MB limit.");
-    resumePath = `${input.jobId}/manual_${Date.now()}_${safeFileName(file.name)}`;
-    const { error: uploadError } = await supabase.storage
-      .from("public-resumes")
-      .upload(resumePath, Buffer.from(await file.arrayBuffer()), { contentType: file.type, upsert: true });
-    if (uploadError) throw uploadError;
-  }
+  const resumePath = `${input.jobId}/manual_${Date.now()}_${safeFileName(file.name)}`;
+  const { error: uploadError } = await supabase.storage
+    .from("public-resumes")
+    .upload(resumePath, Buffer.from(await file.arrayBuffer()), { contentType: file.type, upsert: true });
+  if (uploadError) throw uploadError;
 
   const result = await ingestApplicant(
     {
@@ -86,4 +92,19 @@ export async function addCandidateAction(input: AddCandidateInput, formData: For
   revalidatePath("/candidates");
   revalidatePath(`/jobs/${input.jobId}`);
   return result;
+}
+
+/** Admin-only. Deleting the `candidates` row cascades to `applications`
+ * (and everything hanging off an application — stage_history, screenings,
+ * interviews, assessment assignments, scheduled interviews) via the
+ * `on delete cascade` FKs set up in supabase/migrations/0001_init.sql
+ * onward, so this alone is enough to fully remove a candidate. */
+export async function deleteCandidateAction(candidateId: string): Promise<void> {
+  await requireAdmin();
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("candidates").delete().eq("id", candidateId);
+  if (error) throw error;
+
+  revalidatePath("/candidates");
 }

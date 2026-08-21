@@ -1,7 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { generateAssessment, approveAssessment, createAssignment } from "@/lib/assessment/agent";
+import {
+  generateAssessment,
+  approveAssessment,
+  createAssignment,
+  generateAssessmentFromText,
+  regenerateAssessmentQuestions,
+} from "@/lib/assessment/agent";
 import { generateOpenEndedReview } from "@/lib/assessment/open-ended-review-agent";
 import { getAuthedCompanyId, assertJobOwnership } from "@/lib/services/jd";
 import { getApplication, updateApplicationStage } from "@/lib/services/applications";
@@ -12,6 +18,7 @@ import {
   upsertAssessmentQuestion,
   deleteAssessmentQuestion,
   reorderAssessmentQuestions,
+  replaceAssessmentQuestions,
   updateAssessmentMeta,
   createOpenEndedAssessment,
   saveOpenEndedSubmission,
@@ -66,6 +73,52 @@ export async function generateAssessmentAction(jobId: string): Promise<{ assessm
   revalidatePath(`/jobs/${jobId}`);
   revalidatePath("/assessments");
   return { assessmentId: assessment.id };
+}
+
+/**
+ * Generates a structured (non open-ended) draft from a recruiter's free-text
+ * description of what the assessment should cover, optionally grounded in a
+ * reference file the recruiter uploads (e.g. an existing question bank or
+ * assessment doc) — the assessment builder's analog of generateJdAction /
+ * improveJdAction's free-text-instruction pattern. Unlike
+ * createOpenEndedAssessmentAction, this produces a normal DRAFT with a
+ * structured question list that goes through the same builder/approve flow
+ * as generateAssessmentAction.
+ */
+export async function generateAssessmentFromTextAction(
+  jobId: string,
+  instruction: string,
+  formData?: FormData
+): Promise<{ assessmentId: string }> {
+  const file = formData?.get("file");
+  let sourceDocumentText: string | null = null;
+  if (file instanceof File && file.size > 0) {
+    const { text } = await readUploadedFile(file);
+    sourceDocumentText = text;
+  }
+
+  const { assessment } = await generateAssessmentFromText(jobId, instruction, sourceDocumentText);
+  revalidatePath(`/jobs/${jobId}`);
+  revalidatePath("/assessments");
+  return { assessmentId: assessment.id };
+}
+
+/** Recruiter-instructed revision of a DRAFT assessment's whole question set
+ * (e.g. "make question 3 harder", "add 2 more questions about React
+ * hooks") — the builder's analog of improveJdAction. Replaces the full
+ * question set rather than returning a diff, matching how the AI call
+ * itself returns a complete revised list (see regenerateAssessmentQuestions
+ * in lib/assessment/agent.ts). */
+export async function regenerateAssessmentQuestionsAction(assessmentId: string, instruction: string): Promise<AssessmentQuestion[]> {
+  const assessment = await assertEditableDraft(assessmentId);
+  const { companyId } = await getAuthedCompanyId();
+  await assertJobOwnership(assessment.job_id, companyId);
+
+  const { questions } = await regenerateAssessmentQuestions(assessmentId, instruction);
+  const saved = await replaceAssessmentQuestions(assessmentId, questions);
+
+  revalidatePath(`/assessments/${assessmentId}/builder`);
+  return saved;
 }
 
 export async function saveAssessmentMetaAction(assessmentId: string, input: UpdateAssessmentMetaInput): Promise<void> {

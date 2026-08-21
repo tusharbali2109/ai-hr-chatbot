@@ -1,14 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, MapPin, Briefcase, Calendar, Send, Sparkles, ExternalLink } from "lucide-react";
+import { ArrowLeft, MapPin, Briefcase, Calendar, Send, Sparkles, ExternalLink, Trash2 } from "lucide-react";
 import type { Job, JobPosting } from "@/lib/types/database";
 import type { ApplicationWithRelations } from "@/lib/services/applications";
 import { PIPELINE_STAGES, type RecruitmentStage } from "@/lib/stages";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { ConfirmationDialog } from "@/components/ui/ConfirmationDialog";
+import { useToast } from "@/components/ui/Toast";
 import { Pipeline } from "@/components/recruitment/Pipeline";
 import { CandidateTable, type CandidateRow } from "@/components/recruitment/CandidateTable";
 import { ActivityFeed, type ActivityEntry } from "@/components/recruitment/ActivityFeed";
@@ -20,6 +22,7 @@ import { RunScreeningModal } from "./RunScreeningModal";
 import { AssessmentPanel } from "./AssessmentPanel";
 import type { Assessment } from "@/lib/types/database";
 import type { AssignmentStatCounts } from "@/lib/services/assessments";
+import { deleteJobAction } from "@/lib/actions/jobs";
 
 const TABS = ["Overview", "JD", "Candidates", "Pipeline", "Activity"] as const;
 type Tab = (typeof TABS)[number];
@@ -47,6 +50,7 @@ export function JobDetailTabs({
   recommendations,
   assessment,
   assessmentStats,
+  isAdmin = false,
 }: {
   job: Job;
   applications: ApplicationWithRelations[];
@@ -56,12 +60,30 @@ export function JobDetailTabs({
   recommendations: Record<string, { recommendation: "SHORTLISTED" | "REJECTED" | "NEEDS_REVIEW" | null; overallScore: number | null }>;
   assessment: Assessment | null;
   assessmentStats: AssignmentStatCounts | null;
+  isAdmin?: boolean;
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("Overview");
   const [stageFilter, setStageFilter] = useState<RecruitmentStage | null>(null);
   const [publishOpen, setPublishOpen] = useState(false);
   const [screeningOpen, setScreeningOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [isDeleting, startDeleteTransition] = useTransition();
+  const { showToast } = useToast();
+
+  function handleDeleteJob() {
+    startDeleteTransition(async () => {
+      try {
+        await deleteJobAction(job.id);
+        setDeleteOpen(false);
+        showToast(`${job.title} was deleted.`, "success");
+        router.push("/jobs");
+      } catch (err) {
+        showToast(`Couldn't delete job: ${err instanceof Error ? err.message : "Unknown error"}`, "danger");
+        setDeleteOpen(false);
+      }
+    });
+  }
 
   const counts = useMemo(() => {
     const map: Partial<Record<RecruitmentStage, number>> = {};
@@ -152,9 +174,25 @@ export function JobDetailTabs({
               <Send className="h-3.5 w-3.5" />
               Publish Job
             </Button>
+            {isAdmin && (
+              <Button size="sm" variant="danger" onClick={() => setDeleteOpen(true)} disabled={isDeleting}>
+                <Trash2 className="h-3.5 w-3.5" />
+                Delete Job
+              </Button>
+            )}
           </div>
         </div>
       </div>
+
+      <ConfirmationDialog
+        open={deleteOpen}
+        title="Delete job?"
+        description={`This permanently deletes "${job.title}" and every application, screening, interview, and assessment tied to it. This cannot be undone.`}
+        confirmLabel={isDeleting ? "Deleting…" : "Delete"}
+        danger
+        onConfirm={handleDeleteJob}
+        onCancel={() => setDeleteOpen(false)}
+      />
 
       <PublishJobModal
         key={publishOpen ? job.id : "closed"}

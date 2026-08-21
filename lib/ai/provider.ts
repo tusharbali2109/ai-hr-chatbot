@@ -9,6 +9,7 @@ import type {
   FollowUpDecision,
   InterviewEvaluation,
   AssessmentGeneration,
+  AssessmentQuestionGeneration,
   AssessmentQuestionEvaluationResult,
   OpenEndedReview,
   WorkdayTaskEvaluation,
@@ -105,6 +106,22 @@ export interface GenerateAssessmentInput {
   interviewSummary: string | null;
 }
 
+/**
+ * Free-text-instruction-driven assessment generation/revision — the
+ * assessment analog of improveJD(currentJD, instruction). When
+ * currentQuestions is null this generates a brand new draft grounded in the
+ * recruiter's instruction (and optional uploaded reference material)
+ * instead of the job facts alone; when currentQuestions is supplied it
+ * revises that existing question set per the instruction (e.g. "make
+ * question 3 harder").
+ */
+export interface ImproveAssessmentInput {
+  jobContext: GenerateAssessmentInput;
+  currentQuestions: AssessmentQuestionGeneration[] | null;
+  instruction: string;
+  sourceDocumentText?: string | null;
+}
+
 export interface EvaluateAssessmentAnswerInput {
   jobTitle: string;
   questionType: string;
@@ -136,7 +153,18 @@ export interface EvaluateWorkdayTaskInput {
 }
 
 export interface AIProvider {
-  generateStructuredRequirement(rawRequirement: string, overrides: StructuredInputOverrides): Promise<RequirementExtraction>;
+  /**
+   * questionsAsked: how many clarifying questions the recruiter has already been asked in this
+   * session, INCLUDING the fixed opening "what role are you hiring for?" question the UI shows
+   * before this is ever called (so the first call passes 1). The whole conversation is capped at
+   * 5 questions total — the client enforces this as a hard backstop, but the prompt is told the
+   * count so it stops asking (clarification_needed: false) once the budget is spent.
+   */
+  generateStructuredRequirement(
+    rawRequirement: string,
+    overrides: StructuredInputOverrides,
+    questionsAsked: number
+  ): Promise<RequirementExtraction>;
   generateJD(requirement: RequirementExtraction): Promise<JDGeneration>;
   improveJD(currentJD: JDGeneration, instruction: string): Promise<JDGeneration>;
   evaluateCandidate(input: CandidateEvaluationInput): Promise<CandidateEvaluation>;
@@ -146,6 +174,7 @@ export interface AIProvider {
   generateFollowUp(input: GenerateFollowUpInput): Promise<FollowUpDecision>;
   evaluateInterview(input: EvaluateInterviewInput): Promise<InterviewEvaluation>;
   generateAssessment(input: GenerateAssessmentInput): Promise<AssessmentGeneration>;
+  improveAssessment(input: ImproveAssessmentInput): Promise<AssessmentGeneration>;
   evaluateAssessmentAnswer(input: EvaluateAssessmentAnswerInput): Promise<AssessmentQuestionEvaluationResult>;
   reviewOpenEndedSubmission(input: ReviewOpenEndedSubmissionInput): Promise<OpenEndedReview>;
   evaluateWorkdayTask(input: EvaluateWorkdayTaskInput): Promise<WorkdayTaskEvaluation>;
