@@ -19,6 +19,7 @@ import { ScreeningActions } from "./ScreeningActions";
 import { InterviewActions } from "./InterviewActions";
 import { InterviewTranscript } from "./InterviewTranscript";
 import { AssessmentActions } from "./AssessmentActions";
+import { ExplainCandidateChat } from "./ExplainCandidateChat";
 import { InterviewSchedulingActions } from "./InterviewSchedulingActions";
 import { WhatsAppButton } from "./WhatsAppButton";
 import { MobileNextActionBar } from "./MobileNextActionBar";
@@ -340,6 +341,8 @@ export default async function CandidateDetailPage({ params }: PageProps<"/candid
 
         {/* Side column */}
         <div className="flex flex-col gap-6">
+          {primaryApplication && <ExplainCandidateChat applicationId={primaryApplication.id} />}
+
           <Section title="Recruitment Timeline">
             {timelineEntries.length === 0 ? (
               <EmptyState title="No application yet" />

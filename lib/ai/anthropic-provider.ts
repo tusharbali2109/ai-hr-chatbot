@@ -13,6 +13,7 @@ import type {
   EvaluateAssessmentAnswerInput,
   ReviewOpenEndedSubmissionInput,
   EvaluateWorkdayTaskInput,
+  ExplainCandidateInput,
 } from "@/lib/ai/provider";
 import {
   RequirementSchema,
@@ -112,6 +113,23 @@ async function callStructured<T>(
       lastError instanceof Error ? lastError.message : String(lastError)
     }`
   );
+}
+
+/**
+ * Freeform-prose counterpart to callStructured — used only where the output
+ * is conversational text for a human to read directly (e.g. the "Explain
+ * this candidate" chat), never a value another part of the system parses.
+ * No output_config.format/json_schema, no zod parse — just the model's text.
+ */
+async function callText(system: string, userPrompt: string): Promise<string> {
+  const message = await client().messages.create({
+    model: MODEL,
+    max_tokens: 1024,
+    system,
+    output_config: { effort: "medium" },
+    messages: [{ role: "user", content: userPrompt }],
+  });
+  return firstTextBlock(message).trim();
 }
 
 const REQUIREMENT_SYSTEM_PROMPT = `You are the Requirement Agent inside an AI recruitment platform. Extract structured hiring requirements from a recruiter's natural-language description, and — within a strict question budget — ask for whatever is still missing.
@@ -410,6 +428,113 @@ Rules:
 - phone/location/linkedin_url/portfolio_url are null if not found — never guess a format or fill in something plausible-looking.
 - If multiple emails or phone numbers appear, prefer the one that reads as the candidate's primary/personal contact (not a reference's or previous employer's).`;
 
+const EXPLAIN_CANDIDATE_SYSTEM_PROMPT = `You are the Candidate Explainer, a recruiter-facing assistant inside an AI recruitment platform. A recruiter is looking at one candidate's page and asking you plain-language questions about them (e.g. "why was this candidate rejected?", "what were their weak points in the interview?", "summarize their assessment performance").
+
+Rules:
+- Answer ONLY from the candidate data supplied to you below (screening, interview transcript and scores, assessment results, stage history). Never use outside knowledge about the company, role, or candidate, and never guess.
+- If the answer to the recruiter's question isn't covered by the supplied data (e.g. they ask about a stage that hasn't happened yet, or a detail that was never recorded), say so plainly — e.g. "There's no interview data for this candidate yet" — instead of speculating or fabricating an answer. This is critical: an honest "I don't have that" is always better than a confident-sounding guess.
+- Write concise, recruiter-friendly prose — a few short sentences or a tight bullet list. Never dump raw JSON or restate every field; synthesize what's relevant to the question asked.
+- You may reference specific evidence (a quoted transcript answer, a requirement's evidence string, a stage-change reason) when it directly supports your answer, but keep it brief.
+- If prior turns of this conversation are supplied, use them for context on follow-up questions (e.g. "what about their communication skills?" following an earlier question about interview performance).
+- Stay neutral and factual — this is a briefing, not a recommendation to hire or reject. Do not invent an overall verdict beyond what the data's own recommendation fields already state.`;
+
+function buildExplainCandidateUserPrompt(input: ExplainCandidateInput): string {
+  const sections: string[] = [
+    `Candidate: ${input.candidateName}`,
+    `Job: ${input.jobTitle}`,
+    `Current recruitment stage: ${input.currentStage}`,
+  ];
+
+  if (input.screening) {
+    sections.push(
+      [
+        `SCREENING`,
+        `Recommendation: ${input.screening.recommendation ?? "Not available"}`,
+        `Overall score: ${input.screening.overallScore ?? "Not available"}`,
+        `Summary: ${input.screening.summary ?? "Not available"}`,
+        input.screening.strengths.length ? `Strengths: ${input.screening.strengths.join("; ")}` : "",
+        input.screening.gaps.length ? `Gaps: ${input.screening.gaps.join("; ")}` : "",
+        input.screening.concerns.length ? `Concerns: ${input.screening.concerns.join("; ")}` : "",
+        input.screening.requirements.length
+          ? `Requirement matches:\n${input.screening.requirements
+              .map((r) => `- [${r.type}] ${r.requirement}: ${r.status} — ${r.evidence}`)
+              .join("\n")}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n")
+    );
+  } else {
+    sections.push("SCREENING: Not yet screened — no screening data available.");
+  }
+
+  if (input.interview) {
+    sections.push(
+      [
+        `INTERVIEW`,
+        `Status: ${input.interview.status}`,
+        `Recommendation: ${input.interview.recommendation ?? "Not available"}`,
+        `Overall score: ${input.interview.overallScore ?? "Not available"}`,
+        `Summary: ${input.interview.summary ?? "Not available"}`,
+        input.interview.strengths.length ? `Strengths: ${input.interview.strengths.join("; ")}` : "",
+        input.interview.gaps.length ? `Gaps: ${input.interview.gaps.join("; ")}` : "",
+        input.interview.concerns.length ? `Concerns: ${input.interview.concerns.join("; ")}` : "",
+        input.interview.transcript.length
+          ? `Transcript:\n${input.interview.transcript
+              .map(
+                (t) =>
+                  `Q: ${t.question}\nA: ${t.answer}${t.sufficiency ? ` [${t.sufficiency}]` : ""}${t.evaluation ? `\nEvaluation: ${t.evaluation}` : ""}`
+              )
+              .join("\n\n")}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n")
+    );
+  } else {
+    sections.push("INTERVIEW: No interview has been conducted yet — no interview data available.");
+  }
+
+  if (input.assessment) {
+    sections.push(
+      [
+        `ASSESSMENT`,
+        `Assessment: ${input.assessment.assessmentTitle ?? "Not available"}`,
+        `Status: ${input.assessment.status}`,
+        `Score: ${input.assessment.score ?? "Not available"}${input.assessment.passingScore != null ? ` (passing score: ${input.assessment.passingScore})` : ""}`,
+        `Recommendation: ${input.assessment.recommendation ?? "Not available"}`,
+        input.assessment.questionEvaluations.length
+          ? `Per-question evaluations:\n${input.assessment.questionEvaluations
+              .map((q) => `- ${q.question} — ${q.score}/${q.maxScore}: ${q.evaluation}`)
+              .join("\n")}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n")
+    );
+  } else {
+    sections.push("ASSESSMENT: No assessment has been assigned/completed yet — no assessment data available.");
+  }
+
+  sections.push(
+    input.stageHistory.length
+      ? `STAGE HISTORY:\n${input.stageHistory.map((h) => `- ${h.createdAt}: moved to ${h.toStage}${h.reason ? ` — ${h.reason}` : ""}`).join("\n")}`
+      : "STAGE HISTORY: Not available."
+  );
+
+  if (input.priorTurns.length > 0) {
+    sections.push(
+      `PRIOR CONVERSATION TURNS (for follow-up context):\n${input.priorTurns
+        .map((t) => `${t.role === "user" ? "Recruiter" : "You"}: ${t.text}`)
+        .join("\n")}`
+    );
+  }
+
+  sections.push(`RECRUITER'S QUESTION:\n"""\n${input.question}\n"""`);
+
+  return sections.join("\n\n");
+}
+
 export const anthropicProvider: AIProvider = {
   async generateStructuredRequirement(rawRequirement, overrides: StructuredInputOverrides, questionsAsked = 1) {
     const overrideLines = Object.entries(overrides)
@@ -523,5 +648,10 @@ export const anthropicProvider: AIProvider = {
     return callStructured(RESUME_CANDIDATE_EXTRACTION_SYSTEM_PROMPT, userPrompt, resumeCandidateExtractionJsonSchema, (raw) =>
       ResumeCandidateExtractionSchema.parse(raw)
     ) as Promise<ResumeCandidateExtraction>;
+  },
+
+  async explainCandidate(input) {
+    const userPrompt = buildExplainCandidateUserPrompt(input);
+    return callText(EXPLAIN_CANDIDATE_SYSTEM_PROMPT, userPrompt);
   },
 };

@@ -157,6 +157,56 @@ export interface EvaluateWorkdayTaskInput {
   candidateAiDisclosure: string;
 }
 
+export interface ExplainCandidateChatTurn {
+  role: "user" | "assistant";
+  text: string;
+}
+
+/**
+ * Everything the "Explain this candidate" chat is allowed to reason from —
+ * assembled once per question from the exact same data already fetched for
+ * the candidate detail page (screening, interview, assessment, stage
+ * history). Any field genuinely unavailable is simply omitted/null, never
+ * backfilled with a guess — the system prompt instructs the model to say so
+ * rather than invent an answer, same "UNKNOWN not assumed" discipline as
+ * lib/screening/candidate-data-provider.ts.
+ */
+export interface ExplainCandidateInput {
+  candidateName: string;
+  jobTitle: string;
+  currentStage: string;
+  screening: {
+    recommendation: string | null;
+    overallScore: number | null;
+    summary: string | null;
+    strengths: string[];
+    gaps: string[];
+    concerns: string[];
+    requirements: { type: "MANDATORY" | "PREFERRED"; requirement: string; status: string; evidence: string }[];
+  } | null;
+  interview: {
+    status: string;
+    recommendation: string | null;
+    overallScore: number | null;
+    summary: string | null;
+    strengths: string[];
+    gaps: string[];
+    concerns: string[];
+    transcript: { question: string; answer: string; sufficiency: string | null; evaluation: string | null }[];
+  } | null;
+  assessment: {
+    assessmentTitle: string | null;
+    status: string;
+    score: number | null;
+    passingScore: number | null;
+    recommendation: string | null;
+    questionEvaluations: { question: string; score: number; maxScore: number; evaluation: string }[];
+  } | null;
+  stageHistory: { toStage: string; reason: string | null; createdAt: string }[];
+  question: string;
+  priorTurns: ExplainCandidateChatTurn[];
+}
+
 export interface AIProvider {
   /**
    * questionsAsked: how many clarifying questions the recruiter has already been asked in this
@@ -184,4 +234,8 @@ export interface AIProvider {
   reviewOpenEndedSubmission(input: ReviewOpenEndedSubmissionInput): Promise<OpenEndedReview>;
   evaluateWorkdayTask(input: EvaluateWorkdayTaskInput): Promise<WorkdayTaskEvaluation>;
   extractCandidateFromResume(resumeText: string): Promise<ResumeCandidateExtraction>;
+  /** Freeform, recruiter-facing prose answer for the "Explain this candidate"
+   * chat — deliberately NOT structured output (conversational, not a form
+   * to fill in). Grounded only in the supplied per-candidate data. */
+  explainCandidate(input: ExplainCandidateInput): Promise<string>;
 }
