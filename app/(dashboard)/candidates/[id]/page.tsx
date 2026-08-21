@@ -1,8 +1,9 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Mail, Phone, MapPin, Link2, Globe, FileText, CheckCircle2, XCircle, HelpCircle } from "lucide-react";
+import { ArrowLeft, Mail, Phone, MapPin, Link2, Globe, FileText, CheckCircle2, XCircle, HelpCircle, Clock } from "lucide-react";
 import { getCandidate, getResumeSignedUrl, listCandidateApplications } from "@/lib/services/candidates";
 import { getCurrentUserProfile } from "@/lib/services/auth";
+import { getLatestLoginAttempt } from "@/lib/services/candidate-auth";
 import { listStageHistory } from "@/lib/services/applications";
 import { getLatestScreening } from "@/lib/services/screening";
 import { getLatestInterview } from "@/lib/services/interviews";
@@ -47,6 +48,7 @@ export default async function CandidateDetailPage({ params }: PageProps<"/candid
   const isAdmin = currentUser?.role === "admin";
 
   const resumeHref = await getResumeSignedUrl(candidate.resume_url);
+  const loginAttempt = candidate.auth_user_id ? null : await getLatestLoginAttempt(candidate.email).catch(() => null);
 
   const applications = await listCandidateApplications(id);
   const primaryApplication = applications[0] ?? null;
@@ -157,6 +159,14 @@ export default async function CandidateDetailPage({ params }: PageProps<"/candid
                 </span>
               )}
             </div>
+            {loginAttempt && (
+              <Badge tone="warning" className="mt-2">
+                <Clock className="h-3 w-3" />
+                Attempted sign-in on{" "}
+                {new Date(loginAttempt.attemptedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} — not yet
+                eligible (move to Shortlisted or assign an assessment to grant access)
+              </Badge>
+            )}
           </div>
         </div>
         <div className="flex flex-col items-end gap-2">

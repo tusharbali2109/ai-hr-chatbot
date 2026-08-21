@@ -39,6 +39,12 @@ export async function GET(request: NextRequest) {
 
   const result = await linkCandidateAuth(data.user.id, data.user.email);
   if (result.outcome === "no_assessment_for_email") {
+    try {
+      await supabase.from("candidate_login_attempts").insert({ email: data.user.email });
+    } catch {
+      // Best-effort signal for recruiters only — never let logging failure
+      // block the candidate's redirect.
+    }
     return NextResponse.redirect(`${origin}/candidate/pending-approval`);
   }
 

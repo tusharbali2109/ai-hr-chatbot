@@ -79,3 +79,25 @@ export async function candidateHasNonInterviewAssignment(candidateId: string, cl
 
   return (assessmentCount ?? 0) > 0 || (workdayCount ?? 0) > 0;
 }
+
+/**
+ * Looks up the most recent rejected sign-in attempt for a candidate's email
+ * (see candidate_login_attempts, migration 0013) — used on the recruiter's
+ * candidate detail page to surface "candidate tried to log in but wasn't
+ * eligible yet" as a low-key signal, not an error state.
+ */
+export async function getLatestLoginAttempt(email: string, client?: SupabaseClient): Promise<{ attemptedAt: string } | null> {
+  const supabase = await resolveClient(client);
+
+  const { data, error } = await supabase
+    .from("candidate_login_attempts")
+    .select("attempted_at")
+    .ilike("email", email)
+    .order("attempted_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+
+  return { attemptedAt: data.attempted_at as string };
+}
