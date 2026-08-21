@@ -263,7 +263,8 @@ export type InterviewStatus =
   | "PROVIDER_ERROR"
   | "CANDIDATE_DISCONNECTED"
   | "CONSENT_DECLINED"
-  | "NEEDS_REVIEW";
+  | "NEEDS_REVIEW"
+  | "PROCTORING_TERMINATED";
 
 export type InterviewProvider = "mock" | "twilio" | "browser";
 export type ConsentStatus = "PENDING" | "GRANTED" | "DECLINED";
@@ -361,7 +362,8 @@ export type InterviewEventType =
   | "CALL_FAILED"
   | "HUMAN_OVERRIDE"
   | "CAMERA_ENABLED"
-  | "PROCTORING_WARNING";
+  | "PROCTORING_WARNING"
+  | "PROCTORING_REJECTED";
 
 export interface InterviewEvent {
   id: string;

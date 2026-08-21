@@ -73,7 +73,7 @@ export async function getCandidateInterviewTurnAction(interviewId: string): Prom
   if (!owned) return { status: "NOT_FOUND" };
   const { interview, candidateClient } = owned;
 
-  if (interview.status === "COMPLETED" || interview.status === "NEEDS_REVIEW") {
+  if (interview.status === "COMPLETED" || interview.status === "NEEDS_REVIEW" || interview.status === "PROCTORING_TERMINATED") {
     return { status: "DONE" };
   }
 
@@ -108,6 +108,67 @@ export async function logProctoringWarningAction(interviewId: string, reason: st
   } catch {
     // best-effort
   }
+}
+
+/** Auto-terminates the interview and rejects the application after the
+ * candidate exceeds the proctoring warning limit (repeated tab-switching,
+ * blocked paste attempts, camera/mic loss, or the face monitor's sustained
+ * no-face/multiple-faces/looking-away signal) — VideoInterviewRunner calls
+ * this once its client-side warning counter crosses the threshold, never
+ * the recruiter. Idempotent: a second call after the interview is already
+ * terminal is a no-op. Mirrors finalizeCandidateInterviewAction's
+ * candidateClient-for-ownership / webhookClient-for-application-mutation
+ * split — decision_source: "SYSTEM" (not "AI") makes clear in the audit
+ * trail this was a deterministic proctoring rule, not a model judgment. */
+export async function rejectInterviewForProctoringAction(interviewId: string, warningCount: number): Promise<void> {
+  const owned = await loadOwnedBrowserInterview(interviewId);
+  if (!owned) throw new Error("Interview not found.");
+  const { interview, candidateClient } = owned;
+  if (interview.status === "COMPLETED" || interview.status === "NEEDS_REVIEW" || interview.status === "PROCTORING_TERMINATED") {
+    return;
+  }
+
+  await logInterviewEvent(interviewId, "PROCTORING_REJECTED", { warning_count: warningCount }, candidateClient);
+
+  const webhookClient = createWebhookClient();
+  const finalized = await finalizeInterview(
+    interviewId,
+    {
+      status: "PROCTORING_TERMINATED",
+      overallScore: null,
+      recommendation: "REJECTED",
+      confidence: null,
+      summary: "Interview automatically ended after repeated proctoring violations (tab-switching, blocked paste, camera/microphone loss, or the candidate not staying visible/facing the camera) during the AI video interview.",
+      strengths: [],
+      gaps: [],
+      concerns: [],
+      componentScores: {},
+      scoringWeights: {},
+      modelName: null,
+      modelVersion: null,
+      endedAt: new Date().toISOString(),
+      durationSeconds: null,
+    },
+    webhookClient
+  );
+
+  await updateApplicationStage(
+    finalized.application_id,
+    "AI_INTERVIEW",
+    "REJECTED",
+    "AI video interview automatically terminated: exceeded the proctoring warning limit.",
+    { source: "interview", decision_source: "SYSTEM", interview_id: finalized.id },
+    webhookClient
+  );
+
+  await logInternalEvent(
+    "candidate.interview.completed",
+    {
+      application_id: finalized.application_id,
+      payload: { recommendation: "REJECTED", overall_score: null, status: "PROCTORING_TERMINATED" },
+    },
+    webhookClient
+  );
 }
 
 export interface SubmitAnswerResult {
