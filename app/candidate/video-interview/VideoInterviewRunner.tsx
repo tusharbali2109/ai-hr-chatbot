@@ -11,7 +11,7 @@ import {
   rejectInterviewForProctoringAction,
 } from "@/lib/actions/candidate-interview";
 import { startFaceMonitor, type FaceMonitorHandle } from "@/lib/interview/face-monitor";
-import { AIAvatar } from "./AIAvatar";
+import { AIInterviewerVideo } from "./AIInterviewerVideo";
 
 type Phase = "consent" | "requesting_media" | "media_denied" | "speaking" | "listening" | "submitting" | "closing" | "ending" | "rejecting";
 
@@ -425,10 +425,8 @@ export function VideoInterviewRunner({
             <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${phase === "speaking" ? "animate-pulse bg-accent" : "bg-muted-foreground"}`} />
             {INTERVIEWER_NAME} {phase === "speaking" ? "speaking…" : phase === "listening" ? "listening…" : ""}
           </div>
-          <div className="flex flex-1 flex-col items-center justify-center gap-4 py-4 sm:gap-6 sm:py-8">
-            <AIAvatar state={phase === "speaking" ? "speaking" : phase === "listening" ? "listening" : "idle"} />
-            <p className="max-w-sm text-center text-sm leading-relaxed text-foreground sm:text-base">{question}</p>
-          </div>
+          <AIInterviewerVideo speaking={phase === "speaking"} />
+          <p className="text-sm leading-relaxed text-foreground sm:text-base">{question}</p>
         </div>
 
         {/* Candidate camera */}
