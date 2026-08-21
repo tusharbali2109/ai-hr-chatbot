@@ -339,22 +339,22 @@ export function VideoInterviewRunner({
 
   if (phase === "consent") {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
-        <div className="w-full max-w-lg rounded-[var(--radius-lg)] border border-border bg-surface p-8">
-          <div className="flex items-center gap-2">
-            <span className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] bg-accent text-accent-foreground">
+      <div className="flex min-h-screen items-center justify-center bg-background px-4 py-6 sm:py-10">
+        <div className="w-full max-w-lg rounded-[var(--radius-lg)] border border-border bg-surface p-5 sm:p-8">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-accent text-accent-foreground">
               <ShieldAlert className="h-4.5 w-4.5" />
             </span>
-            <h1 className="text-lg font-semibold text-foreground">Before you begin</h1>
+            <h1 className="text-base font-semibold text-foreground sm:text-lg">Before you begin</h1>
           </div>
-          <p className="mt-3 text-sm text-muted-foreground">
+          <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
             This AI video interview with {INTERVIEWER_NAME}, your AI interviewer, is monitored for integrity. Please read and accept the
             following before continuing:
           </p>
-          <ul className="mt-4 flex flex-col gap-2.5">
+          <ul className="mt-4 flex flex-col gap-3">
             {PROCTORING_RULES.map((rule, i) => (
-              <li key={i} className="flex items-start gap-2.5 text-sm text-foreground">
-                <span className="mt-0.5 flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-full bg-warning/15 text-[10px] font-semibold text-warning">
+              <li key={i} className="flex items-start gap-3 text-sm leading-relaxed text-foreground">
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-warning/15 text-[11px] font-semibold text-warning">
                   {i + 1}
                 </span>
                 {rule}
@@ -395,44 +395,44 @@ export function VideoInterviewRunner({
   }
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-5xl flex-col px-6 py-10">
-      <div className="mb-6 flex items-center justify-between gap-2">
+    <div className="mx-auto flex min-h-screen max-w-5xl flex-col px-4 py-5 sm:px-6 sm:py-10">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2 sm:mb-6">
         <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] bg-accent text-accent-foreground">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-accent text-accent-foreground">
             <VideoIcon className="h-4 w-4" />
           </div>
-          <h1 className="text-lg font-semibold text-foreground">AI Video Interview</h1>
+          <h1 className="text-base font-semibold text-foreground sm:text-lg">AI Video Interview</h1>
         </div>
         {warningCount > 0 && (
           <span className="flex items-center gap-1.5 rounded-full border border-warning/30 bg-warning/10 px-3 py-1 text-xs font-medium text-warning">
-            <AlertTriangle className="h-3 w-3" />
+            <AlertTriangle className="h-3 w-3 shrink-0" />
             {warningCount} / {MAX_WARNINGS} warnings
           </span>
         )}
       </div>
 
       {warning && (
-        <div className="mb-4 flex items-center gap-2 rounded-[var(--radius-md)] border border-warning/30 bg-warning/10 px-4 py-2.5 text-sm text-warning">
-          <AlertTriangle className="h-4 w-4 shrink-0" />
+        <div className="mb-4 flex items-start gap-2 rounded-[var(--radius-md)] border border-warning/30 bg-warning/10 px-3.5 py-2.5 text-sm leading-snug text-warning sm:items-center sm:px-4">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 sm:mt-0" />
           {warning}
         </div>
       )}
 
-      <div className="grid flex-1 grid-cols-1 gap-6 md:grid-cols-2">
-        {/* Left: AI interviewer */}
-        <div className="flex flex-col gap-4 rounded-[var(--radius-lg)] border border-border bg-surface p-6">
+      <div className="grid flex-1 grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
+        {/* AI interviewer */}
+        <div className="flex flex-col gap-3 rounded-[var(--radius-lg)] border border-border bg-surface p-4 sm:gap-4 sm:p-6">
           <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            <span className={`h-1.5 w-1.5 rounded-full ${phase === "speaking" ? "animate-pulse bg-accent" : "bg-muted-foreground"}`} />
+            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${phase === "speaking" ? "animate-pulse bg-accent" : "bg-muted-foreground"}`} />
             {INTERVIEWER_NAME} {phase === "speaking" ? "speaking…" : phase === "listening" ? "listening…" : ""}
           </div>
-          <div className="flex flex-1 flex-col items-center justify-center gap-6 py-8">
+          <div className="flex flex-1 flex-col items-center justify-center gap-4 py-4 sm:gap-6 sm:py-8">
             <AIAvatar state={phase === "speaking" ? "speaking" : phase === "listening" ? "listening" : "idle"} />
-            <p className="max-w-sm text-center text-base leading-relaxed text-foreground">{question}</p>
+            <p className="max-w-sm text-center text-sm leading-relaxed text-foreground sm:text-base">{question}</p>
           </div>
         </div>
 
-        {/* Right: candidate camera */}
-        <div className="flex flex-col gap-4 rounded-[var(--radius-lg)] border border-border bg-surface p-6">
+        {/* Candidate camera */}
+        <div className="flex flex-col gap-3 rounded-[var(--radius-lg)] border border-border bg-surface p-4 sm:gap-4 sm:p-6">
           <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
             {phase === "listening" ? <Mic className="h-3.5 w-3.5 text-success" /> : <MicOff className="h-3.5 w-3.5" />}
             {phase === "listening" ? "Listening…" : "You"}
@@ -453,15 +453,15 @@ export function VideoInterviewRunner({
             onPaste={handlePaste}
             rows={4}
             placeholder="Your answer will appear here as you speak — you can also edit it before submitting."
-            className="flex-1 resize-none rounded-[var(--radius-md)] border border-border bg-surface-elevated px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-accent focus:outline-none"
+            className="min-h-24 flex-1 resize-none rounded-[var(--radius-md)] border border-border bg-surface-elevated px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-accent focus:outline-none"
           />
 
           {phase === "closing" || phase === "ending" ? (
-            <Button onClick={handleEndInterview} disabled={phase === "ending"}>
+            <Button className="w-full" onClick={handleEndInterview} disabled={phase === "ending"}>
               {phase === "ending" ? "Ending…" : "End Interview"}
             </Button>
           ) : (
-            <Button onClick={handleSubmitAnswer} disabled={phase === "submitting" || phase === "speaking" || !transcript.trim()}>
+            <Button className="w-full" onClick={handleSubmitAnswer} disabled={phase === "submitting" || phase === "speaking" || !transcript.trim()}>
               {phase === "submitting" ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />

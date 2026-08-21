@@ -14,7 +14,7 @@ const WAVEFORM_BARS = [0, 1, 2, 3, 4];
  * while listening for the candidate's answer. */
 export function AIAvatar({ state }: { state: AIAvatarState }) {
   return (
-    <div className="relative flex h-32 w-32 items-center justify-center">
+    <div className="relative flex h-24 w-24 items-center justify-center sm:h-32 sm:w-32">
       {state === "speaking" && (
         <>
           <motion.span
@@ -31,11 +31,11 @@ export function AIAvatar({ state }: { state: AIAvatarState }) {
       )}
 
       <motion.div
-        className="relative z-10 flex h-20 w-20 items-center justify-center rounded-full bg-accent shadow-lg"
+        className="relative z-10 flex h-15 w-15 items-center justify-center rounded-full bg-accent shadow-lg sm:h-20 sm:w-20"
         animate={state === "idle" ? { scale: [1, 1.035, 1] } : { scale: 1 }}
         transition={state === "idle" ? { duration: 3, repeat: Infinity, ease: "easeInOut" } : { duration: 0.3 }}
       >
-        <svg viewBox="0 0 64 64" className="h-11 w-11" aria-hidden="true">
+        <svg viewBox="0 0 64 64" className="h-8 w-8 sm:h-11 sm:w-11" aria-hidden="true">
           <motion.circle
             cx="24"
             cy="27"
