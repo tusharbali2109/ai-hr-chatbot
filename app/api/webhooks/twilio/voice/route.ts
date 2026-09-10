@@ -176,13 +176,35 @@ export async function POST(request: Request) {
   const base = process.env.TWILIO_VOICE_WEBHOOK_BASE_URL;
 
   if (!authToken || !base) {
+    console.error("[twilio/voice] not configured — missing TWILIO_AUTH_TOKEN or TWILIO_VOICE_WEBHOOK_BASE_URL");
     return NextResponse.json({ error: "Twilio is not configured." }, { status: 500 });
   }
 
   const webhookUrl = `${base.replace(/\/$/, "")}/api/webhooks/twilio/voice`;
   const signature = request.headers.get("x-twilio-signature");
-  if (!verifyTwilioSignature(webhookUrl, params, signature, authToken)) {
+  // Twilio signs the exact URL it reached. If TWILIO_VOICE_WEBHOOK_BASE_URL
+  // doesn't match the deployment domain Twilio actually hit (a Vercel
+  // alias / non-www -> www / trailing-slash redirect), verifying only
+  // against the configured URL fails and the call drops right after the
+  // trial message. Also try the host Twilio actually called.
+  const host = request.headers.get("host");
+  const candidateUrls = [webhookUrl];
+  if (host) candidateUrls.push(`https://${host}/api/webhooks/twilio/voice`);
+  const signatureOk = candidateUrls.some((u) => verifyTwilioSignature(u, params, signature, authToken));
+  const signatureBypass = process.env.TWILIO_SIGNATURE_VALIDATION === "off";
+
+  if (!signatureOk && !signatureBypass) {
+    console.error("[twilio/voice] signature verification failed", {
+      configuredUrl: webhookUrl,
+      actualHost: host,
+      hasSignatureHeader: !!signature,
+      callSid: params.CallSid,
+      hint: "Set TWILIO_VOICE_WEBHOOK_BASE_URL to the exact canonical https URL Twilio reaches (no redirect), or set TWILIO_SIGNATURE_VALIDATION=off to bypass for testing.",
+    });
     return NextResponse.json({ error: "Invalid Twilio signature." }, { status: 401 });
+  }
+  if (!signatureOk && signatureBypass) {
+    console.warn("[twilio/voice] SIGNATURE VALIDATION DISABLED via TWILIO_SIGNATURE_VALIDATION=off — insecure, testing only");
   }
 
   const callSid = params.CallSid;
@@ -193,11 +215,13 @@ export async function POST(request: Request) {
   const supabase = createWebhookClient();
   const interview = await getInterviewByExternalCallId(callSid, supabase);
   if (!interview) {
+    console.error("[twilio/voice] no interview found for CallSid", callSid);
     return sayAndHangup("We're sorry, this interview could not be found. Goodbye.");
   }
 
   const context = await getInterviewContext(interview.id, supabase);
   if (!context || !context.screeningCriteria) {
+    console.error("[twilio/voice] interview context missing/incomplete", { interviewId: interview.id, hasContext: !!context });
     return sayAndHangup("We're sorry, an internal error occurred. Goodbye.");
   }
 
