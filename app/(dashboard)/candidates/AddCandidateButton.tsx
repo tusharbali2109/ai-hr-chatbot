@@ -22,20 +22,33 @@ export function AddCandidateButton({ jobs }: { jobs: { id: string; title: string
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [extracting, setExtracting] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [extractionError, setExtractionError] = useState<string | null>(null);
+  const extractionVersion = useRef(0);
 
   function resetAndClose() {
+    extractionVersion.current++;
+    setExtracting(false);
+    setExtractionError(null);
     setOpen(false);
     setFields(EMPTY_FIELDS);
     setResumeFile(null);
   }
 
   async function handleResumeSelected(file: File) {
+    const version = ++extractionVersion.current;
     setResumeFile(file);
     setExtracting(true);
+    setExtractionError(null);
     try {
       const formData = new FormData();
       formData.set("resume", file);
-      const extracted = await extractCandidateFromResumeAction(formData);
+      const result = await extractCandidateFromResumeAction(formData);
+      if (version !== extractionVersion.current) return;
+      if (!result.ok) {
+        setExtractionError(result.error);
+        return;
+      }
+      const extracted = result.data;
       setFields({
         name: extracted.name || "",
         email: extracted.email || "",
@@ -45,10 +58,11 @@ export function AddCandidateButton({ jobs }: { jobs: { id: string; title: string
         portfolioUrl: extracted.portfolio_url || "",
       });
       showToast("Details filled in from the resume — review before saving.", "success");
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : "Couldn't read details from that resume — fill them in manually.", "danger");
+    } catch {
+      if (version !== extractionVersion.current) return;
+      setExtractionError("Couldn't auto-fill this resume. Enter the details manually, or refresh the page and try again.");
     } finally {
-      setExtracting(false);
+      if (version === extractionVersion.current) setExtracting(false);
     }
   }
 
@@ -121,8 +135,9 @@ export function AddCandidateButton({ jobs }: { jobs: { id: string; title: string
                 {extracting ? <Sparkles className="h-4 w-4 animate-pulse" /> : <Upload className="h-4 w-4" />}
                 {extracting ? "Reading resume…" : resumeFile ? resumeFile.name : "Choose a file… (required)"}
               </Button>
+              {extractionError && <p role="alert" className="mt-2 text-sm text-danger">{extractionError}</p>}
               {!resumeFile && (
-                <p className="mt-1.5 text-xs text-muted-foreground">A resume is required — we use it to auto-fill the candidate's details.</p>
+                <p className="mt-1.5 text-xs text-muted-foreground">A resume is required — we use it to auto-fill the candidate&apos;s details.</p>
               )}
             </div>
 
@@ -157,7 +172,7 @@ export function AddCandidateButton({ jobs }: { jobs: { id: string; title: string
               <Button variant="secondary" onClick={resetAndClose}>
                 Cancel
               </Button>
-              <Button onClick={handleSave} disabled={saving || !jobId || !fields.name.trim() || !fields.email.trim() || !resumeFile}>
+              <Button onClick={handleSave} disabled={extracting || saving || !jobId || !fields.name.trim() || !fields.email.trim() || !resumeFile}>
                 {saving ? "Adding…" : "Add Candidate"}
               </Button>
             </div>

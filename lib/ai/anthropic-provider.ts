@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { AIServiceError, aiServiceError } from "@/lib/ai/errors";
 import type {
   AIProvider,
   StructuredInputOverrides,
@@ -62,7 +63,7 @@ export const MODEL = "claude-opus-5";
 function client() {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    throw new Error("ANTHROPIC_API_KEY is not set. Add it to web/.env.local (server-side only).");
+    throw new AIServiceError("AI is not configured. Ask an administrator to set the Anthropic API key for this deployment.");
   }
   return new Anthropic({ apiKey });
 }
@@ -104,15 +105,17 @@ async function callStructured<T>(
       const raw = JSON.parse(text);
       return parse(raw);
     } catch (err) {
+      // The SDK handles transient transport retries. Never retry billing,
+      // authentication, or network errors as malformed model output.
+      if (err instanceof Anthropic.APIError || err instanceof AIServiceError) {
+        throw aiServiceError(err);
+      }
       lastError = err;
     }
   }
 
-  throw new Error(
-    `AI returned malformed output after ${retries + 1} attempt(s): ${
-      lastError instanceof Error ? lastError.message : String(lastError)
-    }`
-  );
+  console.error("AI output validation failed", lastError);
+  throw new AIServiceError("The AI returned an unreadable response. Please retry.");
 }
 
 /**

@@ -7,6 +7,7 @@ import { ingestApplicant, type IngestResult } from "@/lib/services/ingestion";
 import { getAIProvider } from "@/lib/ai";
 import type { ResumeCandidateExtraction } from "@/lib/ai/schemas";
 import { requireAdmin } from "@/lib/services/auth";
+import { AIServiceError } from "@/lib/ai/errors";
 
 const MAX_RESUME_BYTES = 10 * 1024 * 1024;
 
@@ -18,17 +19,31 @@ const MAX_RESUME_BYTES = 10 * 1024 * 1024;
  * breaks Next's action-browser client-reference bundling if statically
  * imported from a "use server" file (see lib/actions/assessment.ts).
  */
-export async function extractCandidateFromResumeAction(formData: FormData): Promise<ResumeCandidateExtraction> {
+export async function extractCandidateFromResumeAction(formData: FormData): Promise<
+  { ok: true; data: ResumeCandidateExtraction } | { ok: false; error: string }
+> {
   const file = formData.get("resume");
-  if (!(file instanceof File)) throw new Error("A resume file is required.");
-  if (file.size > MAX_RESUME_BYTES) throw new Error("File exceeds the 10MB limit.");
+  if (!(file instanceof File) || file.size === 0) return { ok: false, error: "A non-empty resume file is required." };
+  if (file.size > MAX_RESUME_BYTES) return { ok: false, error: "File exceeds the 10MB limit." };
 
-  const { extractTextFromFile } = await import("@/lib/files/text-extraction");
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const text = await extractTextFromFile(buffer, file.name, file.type);
-  if (!text) throw new Error("Couldn't read any text from this resume — try a different format (PDF, DOCX, or plain text).");
-
-  return getAIProvider().extractCandidateFromResume(text);
+  try {
+    await getAuthedCompanyId();
+  } catch {
+    return { ok: false, error: "Please sign in again before reading a resume." };
+  }
+  let text: string;
+  try {
+    const { extractTextFromFile } = await import("@/lib/files/text-extraction");
+    text = await extractTextFromFile(Buffer.from(await file.arrayBuffer()), file.name, file.type);
+  } catch {
+    return { ok: false, error: "Couldn't read this resume. Try a text-based PDF, DOCX, or TXT file, or enter the details manually." };
+  }
+  if (!text.trim()) return { ok: false, error: "No readable text was found. Try a text-based PDF, DOCX, or TXT file, or enter the details manually." };
+  try {
+    return { ok: true, data: await getAIProvider().extractCandidateFromResume(text) };
+  } catch (error) {
+    return { ok: false, error: `${error instanceof AIServiceError ? error.message : "Resume auto-fill is temporarily unavailable."} You can enter the details manually and save the resume.` };
+  }
 }
 
 export interface AddCandidateInput {
