@@ -10,7 +10,7 @@ import {
   markAgentRunCompleted,
   markAgentRunFailed,
 } from "@/lib/services/agent-runs";
-import { createInterview, createInterviewQuestion, getInterview, getLatestInterview } from "@/lib/services/interviews";
+import { createInterview, createInterviewQuestion, getInterview, getLatestInterview, updateInterview } from "@/lib/services/interviews";
 import { logInternalEvent } from "@/lib/services/ingestion";
 import { getAIProvider } from "@/lib/ai";
 import { getVoiceProvider } from "@/lib/interview/registry";
@@ -91,6 +91,10 @@ export async function triggerInterview(applicationId: string, options: TriggerIn
   });
 
   try {
+    const resumeText = await fetchCandidateResumeText(candidate.resume_url);
+    if (!resumeText?.trim()) {
+      throw new Error("A readable resume is required before calling. Please upload a text-based PDF, DOCX, or TXT resume and retry.");
+    }
     const sections = buildInterviewPlanSections(
       job.screening_criteria.mandatory.map((m) => m.skill),
       job.screening_criteria.preferred.map((p) => p.skill),
@@ -117,19 +121,19 @@ export async function triggerInterview(applicationId: string, options: TriggerIn
 
     // Extracted once up front (not per question) — grounds every generated
     // question in the candidate's actual resume where relevant.
-    const resumeText = await fetchCandidateResumeText(candidate.resume_url);
 
     // Persist planned PRIMARY questions upfront so both the mock's
     // synchronous loop and the real Twilio webhook pull from the same list
     // rather than improvising from scratch.
     let sequence = 1;
+    const priorTurns: { question: string; answer: string }[] = [];
     for (const section of sections) {
       for (let i = 0; i < section.targetQuestions; i++) {
         const generated = await getAIProvider().generateQuestion({
           jobTitle: job.title,
           section: section.name,
           category: section.category ?? null,
-          priorTurns: [],
+          priorTurns,
           resumeText,
         });
         await createInterviewQuestion({
@@ -141,6 +145,7 @@ export async function triggerInterview(applicationId: string, options: TriggerIn
           questionType: "PRIMARY",
           parentQuestionId: null,
         });
+        priorTurns.push({ question: generated.question, answer: "Not asked yet. Avoid repeating this planned question." });
       }
     }
 
@@ -151,6 +156,7 @@ export async function triggerInterview(applicationId: string, options: TriggerIn
     });
 
     if (!callResult.completedSynchronously) {
+      await updateInterview(interview.id, { external_call_id: callResult.externalCallId });
       return { interviewId: interview.id, status: callResult.status, completedSynchronously: false };
     }
 

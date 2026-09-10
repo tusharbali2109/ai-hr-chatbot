@@ -42,7 +42,7 @@ function xmlResponse(twiml: InstanceType<typeof VoiceResponse>) {
 
 function sayAndGather(webhookUrl: string, prompt: string): NextResponse {
   const twiml = new VoiceResponse();
-  const gather = twiml.gather({ input: ["speech"], action: webhookUrl, method: "POST", speechTimeout: "auto" });
+  const gather = twiml.gather({ input: ["speech"], action: webhookUrl, method: "POST", speechTimeout: "3", timeout: 10, actionOnEmptyResult: true });
   gather.say(prompt);
   twiml.say("We didn't catch that — let's continue.");
   twiml.redirect(webhookUrl);
@@ -281,11 +281,15 @@ export async function POST(request: Request) {
   const currentIndex = interview.current_question_index;
   const currentPrimary = primaryQuestions[currentIndex];
 
-  if (!speechResult || !currentPrimary) {
+  if (!currentPrimary) {
     return sayAndHangup("We're sorry, something went wrong on our end. We'll follow up separately. Goodbye.");
   }
 
   const followupsForCurrent = allQuestions.filter((q) => q.question_type === "FOLLOWUP" && q.parent_question_id === currentPrimary.id);
+  if (!speechResult?.trim()) {
+    const pendingQuestion = followupsForCurrent.at(-1) ?? currentPrimary;
+    return sayAndGather(webhookUrl, `I didn't catch your answer. ${pendingQuestion.question}`);
+  }
 
   const decision = await processTurn(
     {
