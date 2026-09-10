@@ -11,29 +11,33 @@ import type { GeminiSettingsView } from "@/lib/services/ai-settings";
 /**
  * Settings → AI Providers. Anthropic (primary) is environment-managed and
  * shown read-only. Gemini (automatic fallback) is editable here so an admin
- * can rotate the key the moment its quota runs out, without a redeploy.
+ * can rotate keys the moment a quota runs out, without a redeploy. Multiple
+ * keys can be pasted (one per line) — the engine walks the list when a key
+ * is rate-limited.
  */
 export function AIProvidersPanel({ gemini }: { gemini: GeminiSettingsView }) {
   const router = useRouter();
   const { showToast } = useToast();
-  const [apiKey, setApiKey] = useState("");
+  const [keysText, setKeysText] = useState("");
   const [model, setModel] = useState(gemini.model ?? "");
   const [saving, setSaving] = useState(false);
   const [clearing, setClearing] = useState(false);
 
+  const pastedCount = keysText.split(/[\s,;]+/).map((k) => k.trim()).filter(Boolean).length;
+
   async function handleSave() {
-    if (!apiKey.trim()) {
-      showToast("Paste a Gemini API key first.", "danger");
+    if (pastedCount === 0) {
+      showToast("Paste at least one Gemini API key.", "danger");
       return;
     }
     setSaving(true);
     try {
-      await updateGeminiKeyAction(apiKey.trim(), model.trim() || null);
-      setApiKey("");
-      showToast("Gemini fallback key updated. New AI calls will use it within a few seconds.", "success");
+      await updateGeminiKeyAction(keysText, model.trim() || null);
+      setKeysText("");
+      showToast(`Saved ${pastedCount} Gemini key${pastedCount === 1 ? "" : "s"}. New AI calls will use them within a few seconds.`, "success");
       router.refresh();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Failed to save the Gemini key.", "danger");
+      showToast(err instanceof Error ? err.message : "Failed to save the Gemini keys.", "danger");
     } finally {
       setSaving(false);
     }
@@ -43,10 +47,10 @@ export function AIProvidersPanel({ gemini }: { gemini: GeminiSettingsView }) {
     setClearing(true);
     try {
       await clearGeminiKeyAction();
-      showToast("Saved Gemini key removed. The app now uses the GEMINI_API_KEY environment value, if any.", "success");
+      showToast("Saved Gemini keys removed. The app now uses the GEMINI_API_KEY environment value, if any.", "success");
       router.refresh();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Failed to clear the Gemini key.", "danger");
+      showToast(err instanceof Error ? err.message : "Failed to clear the Gemini keys.", "danger");
     } finally {
       setClearing(false);
     }
@@ -81,9 +85,10 @@ export function AIProvidersPanel({ gemini }: { gemini: GeminiSettingsView }) {
               <p className="text-xs text-muted-foreground">
                 {gemini.hasKey ? (
                   <>
-                    Current key <code className="rounded bg-surface-elevated px-1">{gemini.maskedKey}</code>
+                    {gemini.keyCount} key{gemini.keyCount === 1 ? "" : "s"} configured
+                    {gemini.maskedKeys.length > 0 && <> — <code className="rounded bg-surface-elevated px-1">{gemini.maskedKeys.join(", ")}</code></>}
                     {gemini.usingEnvFallback
-                      ? " (from GEMINI_API_KEY env — save one below to override)"
+                      ? " (from GEMINI_API_KEY env — save below to override)"
                       : gemini.updatedAt
                         ? ` · updated ${new Date(gemini.updatedAt).toLocaleString()}`
                         : ""}
@@ -102,30 +107,32 @@ export function AIProvidersPanel({ gemini }: { gemini: GeminiSettingsView }) {
             </span>
           </div>
 
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <Input
-              type="password"
-              autoComplete="off"
-              placeholder="Paste a new Gemini API key (AQ.… or AIza…)"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              className="sm:flex-1"
-            />
+          <label className="mb-1 block text-xs font-medium text-foreground">
+            Gemini API keys <span className="font-normal text-muted-foreground">— one per line; the app rotates to the next when one hits its limit</span>
+          </label>
+          <textarea
+            rows={4}
+            spellCheck={false}
+            autoComplete="off"
+            placeholder={"AQ.xxxxxxxx\nAQ.yyyyyyyy\nAIzaZzzzzzzz"}
+            value={keysText}
+            onChange={(e) => setKeysText(e.target.value)}
+            className="w-full rounded-[var(--radius-md)] border border-border bg-surface px-3 py-2 font-mono text-xs text-foreground placeholder:text-muted-foreground transition-colors duration-[var(--duration-fast)] focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20"
+          />
+
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             <Input
               placeholder="Model (optional, default gemini-3.6-flash)"
               value={model}
               onChange={(e) => setModel(e.target.value)}
-              className="sm:w-72"
+              className="w-full sm:w-72"
             />
-          </div>
-
-          <div className="mt-3 flex items-center gap-2">
             <Button size="sm" onClick={handleSave} disabled={saving || clearing}>
-              {saving ? "Saving…" : "Save key"}
+              {saving ? "Saving…" : pastedCount > 1 ? `Save ${pastedCount} keys` : "Save key"}
             </Button>
             {gemini.hasKey && !gemini.usingEnvFallback && (
               <Button size="sm" variant="ghost" onClick={handleClear} disabled={saving || clearing}>
-                {clearing ? "Removing…" : "Remove saved key"}
+                {clearing ? "Removing…" : "Remove saved keys"}
               </Button>
             )}
             <a

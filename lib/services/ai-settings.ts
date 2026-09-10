@@ -5,25 +5,41 @@ import { getCurrentUserProfile } from "@/lib/services/auth";
 const ROW_ID = "global";
 
 export interface GeminiCredentials {
-  apiKey: string | null;
+  /** One or more keys, tried in order — rotation happens when a key hits
+   * its quota (see gemini-engine.ts). Empty when nothing is configured. */
+  apiKeys: string[];
   model: string | null;
 }
 
 export interface GeminiSettingsView {
-  /** Masked for display — never the raw key. */
-  maskedKey: string | null;
+  /** Masked, one per configured key — never the raw values. */
+  maskedKeys: string[];
+  keyCount: number;
   hasKey: boolean;
-  /** True when the key in effect comes from the GEMINI_API_KEY env var
-   * because no key has been saved in the database. */
+  /** True when the keys in effect come from the GEMINI_API_KEY env var
+   * because nothing has been saved in the database. */
   usingEnvFallback: boolean;
   model: string | null;
   updatedAt: string | null;
 }
 
+/** Split a stored/env value into individual keys. Accepts newline-, comma-,
+ * semicolon- or whitespace-separated lists so pasting a block just works. */
+export function parseKeyList(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  return Array.from(
+    new Set(
+      raw
+        .split(/[\s,;]+/)
+        .map((k) => k.trim())
+        .filter(Boolean)
+    )
+  );
+}
+
 function mask(key: string): string {
-  const trimmed = key.trim();
-  if (trimmed.length <= 8) return "••••";
-  return `${trimmed.slice(0, 4)}…${trimmed.slice(-4)}`;
+  if (key.length <= 8) return "••••";
+  return `${key.slice(0, 4)}…${key.slice(-4)}`;
 }
 
 /**
@@ -52,8 +68,9 @@ export async function readGeminiCredentialsForEngine(): Promise<GeminiCredential
     console.error("[ai] could not read ai_provider_settings; using GEMINI_API_KEY env", err);
   }
 
+  const keys = parseKeyList(dbKey);
   return {
-    apiKey: dbKey || process.env.GEMINI_API_KEY || null,
+    apiKeys: keys.length ? keys : parseKeyList(process.env.GEMINI_API_KEY),
     model: dbModel || process.env.GEMINI_MODEL || null,
   };
 }
@@ -70,34 +87,36 @@ export async function getGeminiSettingsView(): Promise<GeminiSettingsView> {
     .maybeSingle();
   if (error) throw error;
 
-  const dbKey = data?.gemini_api_key ?? null;
-  const envKey = process.env.GEMINI_API_KEY ?? null;
-  const effective = dbKey || envKey;
+  const dbKeys = parseKeyList(data?.gemini_api_key);
+  const envKeys = parseKeyList(process.env.GEMINI_API_KEY);
+  const effective = dbKeys.length ? dbKeys : envKeys;
 
   return {
-    maskedKey: effective ? mask(effective) : null,
-    hasKey: !!effective,
-    usingEnvFallback: !dbKey && !!envKey,
+    maskedKeys: effective.map(mask),
+    keyCount: effective.length,
+    hasKey: effective.length > 0,
+    usingEnvFallback: dbKeys.length === 0 && envKeys.length > 0,
     model: data?.gemini_model ?? process.env.GEMINI_MODEL ?? null,
     updatedAt: data?.updated_at ?? null,
   };
 }
 
-/** Save a new Gemini key (and optional model override). */
-export async function saveGeminiCredentials(apiKey: string, model: string | null): Promise<void> {
+/** Save one or more Gemini keys (newline/comma separated) plus an optional
+ * model override. */
+export async function saveGeminiCredentials(apiKeysText: string, model: string | null): Promise<void> {
   const { userId } = await getCurrentUserProfile();
-  const trimmedKey = apiKey.trim();
-  if (!trimmedKey) throw new Error("Enter a Gemini API key.");
+  const keys = parseKeyList(apiKeysText);
+  if (keys.length === 0) throw new Error("Enter at least one Gemini API key.");
 
   const supabase = await createServerClient();
   const { error } = await supabase
     .from("ai_provider_settings")
-    .update({ gemini_api_key: trimmedKey, gemini_model: model?.trim() || null, updated_by: userId })
+    .update({ gemini_api_key: keys.join("\n"), gemini_model: model?.trim() || null, updated_by: userId })
     .eq("id", ROW_ID);
   if (error) throw error;
 }
 
-/** Clear the saved key so the app reverts to the env var. */
+/** Clear the saved keys so the app reverts to the env var. */
 export async function clearGeminiCredentials(): Promise<void> {
   const { userId } = await getCurrentUserProfile();
   const supabase = await createServerClient();
