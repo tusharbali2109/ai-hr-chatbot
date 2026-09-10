@@ -1,3 +1,5 @@
+import { prepareInterviewQuestions } from "./prepare-questions";
+import { UserFacingError } from "@/lib/action-result";
 import { getJob } from "@/lib/services/jobs";
 import { getCandidate } from "@/lib/services/candidates";
 import { getApplication, updateApplicationStage } from "@/lib/services/applications";
@@ -12,10 +14,8 @@ import {
 } from "@/lib/services/agent-runs";
 import { createInterview, createInterviewQuestion, getInterview, getLatestInterview, updateInterview } from "@/lib/services/interviews";
 import { logInternalEvent } from "@/lib/services/ingestion";
-import { getAIProvider } from "@/lib/ai";
 import { getVoiceProvider } from "@/lib/interview/registry";
-import { formatE164, buildInterviewPlanSections, DEFAULT_INTERVIEW_CONFIG, mapRecommendationToStage } from "@/lib/interview/logic";
-import { fetchCandidateResumeText } from "@/lib/files/resume-text";
+import { formatE164, DEFAULT_INTERVIEW_CONFIG, mapRecommendationToStage } from "@/lib/interview/logic";
 import type { InterviewProvider } from "@/lib/types/database";
 
 export interface TriggerInterviewOptions {
@@ -47,11 +47,11 @@ export interface TriggerInterviewResult {
 export async function triggerInterview(applicationId: string, options: TriggerInterviewOptions = {}): Promise<TriggerInterviewResult> {
   const { companyId } = await getAuthedCompanyId();
   const application = await getApplication(applicationId);
-  if (!application) throw new Error("Application not found.");
+  if (!application) throw new UserFacingError("Application not found.");
   await assertJobOwnership(application.job_id, companyId);
 
   if (application.current_stage !== "SHORTLISTED" && !options.overrideEligibility) {
-    throw new Error("Only shortlisted candidates can be called for an AI interview.");
+    throw new UserFacingError("Only shortlisted candidates can be called for an AI interview.");
   }
 
   const [job, candidate, latestScreening, priorInterview] = await Promise.all([
@@ -60,53 +60,36 @@ export async function triggerInterview(applicationId: string, options: TriggerIn
     getLatestScreening(applicationId),
     getLatestInterview(applicationId),
   ]);
-  if (!job) throw new Error("Job not found.");
-  if (!candidate) throw new Error("Candidate not found.");
-  if (!job.screening_criteria) throw new Error("This job has no screening criteria to build an interview plan from.");
+  if (!job) throw new UserFacingError("Job not found.");
+  if (!candidate) throw new UserFacingError("Candidate not found.");
+  if (!job.screening_criteria) throw new UserFacingError("This job has no screening criteria to build an interview plan from.");
 
   const toPhoneE164 = formatE164(candidate.phone);
   if (!toPhoneE164) {
-    throw new Error("Candidate phone number is missing or invalid — cannot place an AI interview call.");
+    throw new UserFacingError("Candidate phone number is missing or invalid — cannot place an AI interview call.");
   }
 
   if (await hasActiveRun("INTERVIEW", applicationId)) {
-    throw new Error("An interview is already in progress for this application.");
+    throw new UserFacingError("An interview is already in progress for this application.");
   }
 
   const attemptNumber = (priorInterview?.attempt_number ?? 0) + 1;
   if (attemptNumber > DEFAULT_INTERVIEW_CONFIG.maxCallAttempts) {
-    throw new Error(`Maximum call attempts (${DEFAULT_INTERVIEW_CONFIG.maxCallAttempts}) reached — this needs manual handling.`);
+    throw new UserFacingError(`Maximum call attempts (${DEFAULT_INTERVIEW_CONFIG.maxCallAttempts}) reached — this needs manual handling.`);
   }
 
   const jdVersion = await getApprovedJdVersion(application.job_id);
   const voiceProvider = getVoiceProvider();
+  if (process.env.NODE_ENV === "production" && voiceProvider.name === "mock") {
+    throw new UserFacingError("Real phone calling is not enabled. Ask an administrator to configure Twilio and set VOICE_PROVIDER=twilio.");
+  }
+  voiceProvider.validateConfiguration?.();
 
   const agentRun = await createAgentRun("INTERVIEW", applicationId);
   await markAgentRunRunning(agentRun.id, voiceProvider.name);
 
-  await updateApplicationStage(applicationId, application.current_stage, "AI_INTERVIEW", "AI interview started", {
-    source: "interview",
-    decision_source: "AI",
-    agent_run_id: agentRun.id,
-  });
-
   try {
-    const resumeText = await fetchCandidateResumeText(candidate.resume_url);
-    if (!resumeText?.trim()) {
-      throw new Error("A readable resume is required before calling. Please upload a text-based PDF, DOCX, or TXT resume and retry.");
-    }
-    const sections = buildInterviewPlanSections(
-      job.screening_criteria.mandatory.map((m) => m.skill),
-      job.screening_criteria.preferred.map((p) => p.skill),
-      DEFAULT_INTERVIEW_CONFIG.maxDurationMinutes
-    );
-
-    await getAIProvider().generateInterviewPlan({
-      jobTitle: job.title,
-      companyName: "the company",
-      candidateName: candidate.name,
-      sections: sections.map((s) => ({ name: s.name, targetMinutes: s.targetMinutes, targetQuestions: s.targetQuestions, category: s.category })),
-    });
+    const questions = await prepareInterviewQuestions(job.title, job.screening_criteria, candidate.resume_url);
 
     const interview = await createInterview({
       applicationId,
@@ -119,35 +102,12 @@ export async function triggerInterview(applicationId: string, options: TriggerIn
       maxAttempts: DEFAULT_INTERVIEW_CONFIG.maxCallAttempts,
     });
 
-    // Extracted once up front (not per question) — grounds every generated
-    // question in the candidate's actual resume where relevant.
-
-    // Persist planned PRIMARY questions upfront so both the mock's
-    // synchronous loop and the real Twilio webhook pull from the same list
-    // rather than improvising from scratch.
-    let sequence = 1;
-    const priorTurns: { question: string; answer: string }[] = [];
-    for (const section of sections) {
-      for (let i = 0; i < section.targetQuestions; i++) {
-        const generated = await getAIProvider().generateQuestion({
-          jobTitle: job.title,
-          section: section.name,
-          category: section.category ?? null,
-          priorTurns,
-          resumeText,
-        });
-        await createInterviewQuestion({
-          interviewId: interview.id,
-          sequence: sequence++,
-          section: section.name,
-          category: section.category ?? generated.category,
-          question: generated.question,
-          questionType: "PRIMARY",
-          parentQuestionId: null,
-        });
-        priorTurns.push({ question: generated.question, answer: "Not asked yet. Avoid repeating this planned question." });
-      }
+    for (const [index, question] of questions.entries()) {
+      await createInterviewQuestion({ interviewId: interview.id, sequence: index + 1, ...question, questionType: "PRIMARY", parentQuestionId: null });
     }
+    await updateApplicationStage(applicationId, application.current_stage, "AI_INTERVIEW", "AI interview prepared", {
+      source: "interview", decision_source: "AI", agent_run_id: agentRun.id,
+    });
 
     const callResult = await voiceProvider.createOutboundCall({
       interviewId: interview.id,
@@ -161,7 +121,7 @@ export async function triggerInterview(applicationId: string, options: TriggerIn
     }
 
     const finalized = await getInterview(interview.id);
-    if (!finalized) throw new Error("Interview record disappeared after completion.");
+    if (!finalized) throw new UserFacingError("Interview record disappeared after completion.");
 
     const finalStage = mapRecommendationToStage(finalized.recommendation, finalized.status);
     await updateApplicationStage(applicationId, "AI_INTERVIEW", finalStage, "AI interview completed", {
@@ -195,7 +155,7 @@ export async function triggerInterview(applicationId: string, options: TriggerIn
     // Stage stays at AI_INTERVIEW (already set above) — a technical/AI
     // failure must never silently become REJECTED.
     await markAgentRunFailed(agentRun.id, message);
-    throw new Error(message);
+    throw err;
   }
 }
 

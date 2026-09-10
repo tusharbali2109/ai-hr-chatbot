@@ -1,13 +1,16 @@
 import { getAuthedCompanyId } from "@/lib/services/jd";
+import { getGeminiSettingsView, type GeminiSettingsView } from "@/lib/services/ai-settings";
 import { listConnections } from "@/lib/services/jobboards";
 import { listPlatforms, checkConnection } from "@/lib/jobboards/registry";
 import { listInterviewersForCompany, listCalendarConnectionSummariesForCompany, listAutomationRulesForCompany } from "@/lib/services/scheduling";
 import { IntegrationsPanel, type IntegrationCardData } from "./IntegrationsPanel";
 import { InterviewersPanel } from "./InterviewersPanel";
 import { AutomationRulesPanel } from "./AutomationRulesPanel";
+import { AIProvidersPanel } from "./AIProvidersPanel";
 
 export default async function SettingsPage() {
   const { companyId } = await getAuthedCompanyId();
+  const geminiSettings: GeminiSettingsView | null = await getGeminiSettingsView().catch(() => null);
   const [platforms, connections, interviewers, calendarConnections, automationRules] = await Promise.all([
     listPlatforms(),
     listConnections(),
@@ -54,6 +57,12 @@ export default async function SettingsPage() {
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">Settings</h1>
         <p className="mt-1 text-sm text-muted-foreground">Integrations, interviewers, and automation for this company.</p>
       </div>
+
+      {geminiSettings && (
+        <div className="mb-6">
+          <AIProvidersPanel gemini={geminiSettings} />
+        </div>
+      )}
 
       <div className="mb-6">
         <h2 className="mb-3 text-sm font-semibold text-foreground">Job Board Integrations</h2>

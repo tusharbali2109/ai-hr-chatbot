@@ -39,6 +39,7 @@ export interface VoiceTranscriptTurn {
  * particular provider works.
  */
 export interface VoiceProvider {
+  validateConfiguration?(): void;
   readonly name: string;
   readonly capabilities: VoiceProviderCapabilities;
 

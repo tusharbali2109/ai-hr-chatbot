@@ -8,14 +8,19 @@ vi.mock("@/lib/services/screening", () => ({ getLatestScreening: vi.fn() }));
 vi.mock("@/lib/services/agent-runs", () => ({ hasActiveRun: vi.fn(async () => false), createAgentRun: vi.fn(async () => ({ id: "run" })), markAgentRunRunning: vi.fn(), markAgentRunCompleted: vi.fn(), markAgentRunFailed: vi.fn() }));
 vi.mock("@/lib/services/interviews", () => ({ createInterview: vi.fn(async () => ({ id: "interview" })), createInterviewQuestion: vi.fn(), getInterview: vi.fn(), getLatestInterview: vi.fn(), updateInterview: vi.fn() }));
 vi.mock("@/lib/services/ingestion", () => ({ logInternalEvent: vi.fn() }));
+vi.mock("@/lib/services/companies", () => ({ getCompany: vi.fn(async () => ({ name: "Company" })) }));
+vi.mock("@/lib/communication/agent", () => ({ sendNextStepEmail: vi.fn(async () => ({ status: "FAILED", message: null })) }));
 vi.mock("@/lib/files/resume-text", () => ({ fetchCandidateResumeText: vi.fn(async () => "Built a payments API using Node.js") }));
 const mocks = vi.hoisted(() => ({ question: vi.fn(async () => ({ question: "How did you build the payments API?", category: "Experience" })), call: vi.fn(async () => ({ externalCallId: "CA123", status: "queued", completedSynchronously: false })) }));
 vi.mock("@/lib/ai", () => ({ getAIProvider: () => ({ generateInterviewPlan: vi.fn(), generateQuestion: mocks.question }) }));
 vi.mock("@/lib/interview/registry", () => ({ getVoiceProvider: () => ({ name: "twilio", createOutboundCall: mocks.call }) }));
 
 import { triggerInterview } from "./agent";
+import { startBrowserInterview } from "./browser-agent";
 import { updateInterview, createInterview } from "@/lib/services/interviews";
 import { fetchCandidateResumeText } from "@/lib/files/resume-text";
+import { updateApplicationStage } from "@/lib/services/applications";
+import { AIServiceError } from "@/lib/ai/errors";
 
 describe("phone interview setup", () => {
   beforeEach(() => vi.clearAllMocks());
@@ -32,5 +37,25 @@ describe("phone interview setup", () => {
     await expect(triggerInterview("application")).rejects.toThrow("readable resume");
     expect(mocks.call).not.toHaveBeenCalled();
     expect(createInterview).not.toHaveBeenCalled();
+    expect(updateApplicationStage).not.toHaveBeenCalled();
+  });
+  it("leaves the candidate eligible when AI billing fails during preparation", async () => {
+    mocks.question.mockRejectedValueOnce(new AIServiceError("Insufficient credits"));
+    await expect(triggerInterview("application")).rejects.toBeInstanceOf(AIServiceError);
+    expect(createInterview).not.toHaveBeenCalled();
+    expect(updateApplicationStage).not.toHaveBeenCalled();
+    expect(mocks.call).not.toHaveBeenCalled();
+  });
+  it("grounds video questions in the resume and does not claim a failed email was sent", async () => {
+    const result = await startBrowserInterview("application");
+    expect(result.emailSent).toBe(false);
+    expect(result.interviewUrl).toContain("/candidate/video-interview");
+    expect(mocks.question).toHaveBeenCalledWith(expect.objectContaining({ resumeText: expect.stringContaining("payments API") }));
+  });
+  it("keeps video interview setup retryable after an AI failure", async () => {
+    mocks.question.mockRejectedValueOnce(new AIServiceError("Insufficient credits"));
+    await expect(startBrowserInterview("application")).rejects.toBeInstanceOf(AIServiceError);
+    expect(createInterview).not.toHaveBeenCalled();
+    expect(updateApplicationStage).not.toHaveBeenCalled();
   });
 });

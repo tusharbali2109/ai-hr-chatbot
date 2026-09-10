@@ -1,5 +1,6 @@
 "use server";
 
+import { actionResult, type ActionResult, UserFacingError } from "@/lib/action-result";
 import { getAuthedCompanyId, assertJobOwnership } from "@/lib/services/jd";
 import { getApplication, listStageHistory } from "@/lib/services/applications";
 import { getCandidate } from "@/lib/services/candidates";
@@ -21,19 +22,19 @@ const MAX_PRIOR_TURNS = 20;
  * the chat history lives in client React state and is passed back in on
  * every call purely so follow-up questions have context.
  */
-export async function askAboutCandidateAction(
+async function askAboutCandidate(
   applicationId: string,
   question: string,
   priorTurns: ExplainCandidateChatTurn[]
 ): Promise<string> {
   const trimmedQuestion = question.trim();
-  if (!trimmedQuestion) throw new Error("A question is required.");
-  if (trimmedQuestion.length > MAX_QUESTION_LENGTH) throw new Error("Question is too long.");
+  if (!trimmedQuestion) throw new UserFacingError("A question is required.");
+  if (trimmedQuestion.length > MAX_QUESTION_LENGTH) throw new UserFacingError("Question is too long.");
 
   const { companyId } = await getAuthedCompanyId();
 
   const application = await getApplication(applicationId);
-  if (!application) throw new Error("Application not found.");
+  if (!application) throw new UserFacingError("Application not found.");
   await assertJobOwnership(application.job_id, companyId);
 
   const [candidate, job, screening, interview, jobAssessment, assessmentAssignment, stageHistory] = await Promise.all([
@@ -46,7 +47,7 @@ export async function askAboutCandidateAction(
     listStageHistory(applicationId),
   ]);
 
-  if (!candidate || !job) throw new Error("Candidate or job not found.");
+  if (!candidate || !job) throw new UserFacingError("Candidate or job not found.");
 
   let assessmentSection: ExplainCandidateInput["assessment"] = null;
   if (assessmentAssignment) {
@@ -121,4 +122,8 @@ export async function askAboutCandidateAction(
   };
 
   return getAIProvider().explainCandidate(input);
+}
+
+export async function askAboutCandidateAction(applicationId: string, question: string, priorTurns: ExplainCandidateChatTurn[]): Promise<ActionResult<string>> {
+  return actionResult(() => askAboutCandidate(applicationId, question, priorTurns));
 }

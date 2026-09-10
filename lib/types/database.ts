@@ -699,6 +699,18 @@ export interface AutomationRule {
   updated_at: string;
 }
 
+/** Single global row (id = "global"). Holds the runtime-editable fallback
+ * (Gemini) credentials so an admin can rotate the key from the Settings UI
+ * without a redeploy. Null gemini_api_key => fall back to the
+ * GEMINI_API_KEY env var. See supabase/migrations/0015_ai_provider_settings.sql. */
+export interface AIProviderSettings {
+  id: "global";
+  gemini_api_key: string | null;
+  gemini_model: string | null;
+  updated_at: string;
+  updated_by: string | null;
+}
+
 export type FinalReviewRecommendation = "SELECT" | "REJECT" | "NEEDS_REVIEW";
 export type FinalReviewStatus = "PENDING" | "APPROVED" | "REJECTED" | "NEEDS_REVIEW";
 
@@ -916,6 +928,7 @@ export interface Database {
       offers_summary: { Row: OfferSummary; Insert: never; Update: never };
       audit_log: { Row: AuditLogEntry; Insert: Partial<AuditLogEntry>; Update: Partial<AuditLogEntry> };
       ai_usage_log: { Row: AiUsageLogEntry; Insert: Partial<AiUsageLogEntry>; Update: Partial<AiUsageLogEntry> };
+      ai_provider_settings: { Row: AIProviderSettings; Insert: Partial<AIProviderSettings>; Update: Partial<AIProviderSettings> };
     };
   };
 }

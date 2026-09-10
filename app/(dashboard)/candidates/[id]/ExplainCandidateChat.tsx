@@ -49,7 +49,9 @@ export function ExplainCandidateChat({ applicationId }: { applicationId: string 
     const priorTurns: ExplainCandidateChatTurn[] = messages.map((m) => ({ role: m.role, text: m.text }));
 
     try {
-      const answer = await askAboutCandidateAction(applicationId, text, priorTurns);
+      const response = await askAboutCandidateAction(applicationId, text, priorTurns);
+      if (!response.ok) { setError(response.error); return; }
+      const answer = response.data;
       setMessages((prev) => [...prev, { id: nextId(), role: "assistant", text: answer }]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong answering that — try again.");

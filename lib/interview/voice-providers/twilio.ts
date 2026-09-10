@@ -69,6 +69,17 @@ class TwilioVoiceProvider implements VoiceProvider {
     return { externalCallId: call.sid, status: call.status, completedSynchronously: false };
   }
 
+  validateConfiguration(): void {
+    this.client();
+    const base = this.webhookBaseUrl();
+    if (!process.env.TWILIO_PHONE_NUMBER) throw new VoiceProviderNotConfiguredError("twilio (TWILIO_PHONE_NUMBER)");
+    try {
+      if (new URL(base).protocol !== "https:") throw new Error();
+    } catch {
+      throw new VoiceProviderNotConfiguredError("twilio (set TWILIO_VOICE_WEBHOOK_BASE_URL to the public HTTPS app URL)");
+    }
+  }
+
   async endCall(externalCallId: string): Promise<void> {
     await this.client().calls(externalCallId).update({ status: "completed" });
   }

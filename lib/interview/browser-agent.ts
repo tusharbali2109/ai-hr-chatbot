@@ -1,3 +1,5 @@
+import { prepareInterviewQuestions } from "./prepare-questions";
+import { UserFacingError } from "@/lib/action-result";
 import { getJob } from "@/lib/services/jobs";
 import { getCandidate } from "@/lib/services/candidates";
 import { getCompany } from "@/lib/services/companies";
@@ -6,12 +8,13 @@ import { getAuthedCompanyId, assertJobOwnership, getApprovedJdVersion } from "@/
 import { getLatestScreening } from "@/lib/services/screening";
 import { hasActiveRun, createAgentRun, markAgentRunRunning, markAgentRunFailed } from "@/lib/services/agent-runs";
 import { createInterview, createInterviewQuestion, getLatestInterview } from "@/lib/services/interviews";
-import { getAIProvider } from "@/lib/ai";
-import { buildInterviewPlanSections, DEFAULT_INTERVIEW_CONFIG } from "@/lib/interview/logic";
+import { DEFAULT_INTERVIEW_CONFIG } from "@/lib/interview/logic";
 import { sendNextStepEmail } from "@/lib/communication/agent";
 
 export interface StartBrowserInterviewResult {
   interviewId: string;
+  emailSent: boolean;
+  interviewUrl: string;
 }
 
 /**
@@ -27,11 +30,11 @@ export interface StartBrowserInterviewResult {
 export async function startBrowserInterview(applicationId: string): Promise<StartBrowserInterviewResult> {
   const { companyId } = await getAuthedCompanyId();
   const application = await getApplication(applicationId);
-  if (!application) throw new Error("Application not found.");
+  if (!application) throw new UserFacingError("Application not found.");
   await assertJobOwnership(application.job_id, companyId);
 
   if (application.current_stage !== "SHORTLISTED") {
-    throw new Error("Only shortlisted candidates can be sent an AI video interview.");
+    throw new UserFacingError("Only shortlisted candidates can be sent an AI video interview.");
   }
 
   const [job, candidate, company, latestScreening, priorInterview] = await Promise.all([
@@ -41,32 +44,26 @@ export async function startBrowserInterview(applicationId: string): Promise<Star
     getLatestScreening(applicationId),
     getLatestInterview(applicationId),
   ]);
-  if (!job) throw new Error("Job not found.");
-  if (!candidate) throw new Error("Candidate not found.");
-  if (!job.screening_criteria) throw new Error("This job has no screening criteria to build an interview plan from.");
+  if (!job) throw new UserFacingError("Job not found.");
+  if (!candidate) throw new UserFacingError("Candidate not found.");
+  if (!job.screening_criteria) throw new UserFacingError("This job has no screening criteria to build an interview plan from.");
 
   if (await hasActiveRun("INTERVIEW", applicationId)) {
-    throw new Error("An interview is already in progress for this application.");
+    throw new UserFacingError("An interview is already in progress for this application.");
   }
 
   const attemptNumber = (priorInterview?.attempt_number ?? 0) + 1;
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? (process.env.NODE_ENV === "production" ? "" : "http://localhost:3000");
+  if (!appUrl || (process.env.NODE_ENV === "production" && !appUrl.startsWith("https://"))) {
+    throw new UserFacingError("Video interview links are not configured. Ask an administrator to set NEXT_PUBLIC_APP_URL to the live HTTPS app URL.");
+  }
   const jdVersion = await getApprovedJdVersion(application.job_id);
 
   const agentRun = await createAgentRun("INTERVIEW", applicationId);
   await markAgentRunRunning(agentRun.id, "browser");
 
-  await updateApplicationStage(applicationId, application.current_stage, "AI_INTERVIEW", "AI video interview sent", {
-    source: "interview",
-    decision_source: "AI",
-    agent_run_id: agentRun.id,
-  });
-
   try {
-    const sections = buildInterviewPlanSections(
-      job.screening_criteria.mandatory.map((m) => m.skill),
-      job.screening_criteria.preferred.map((p) => p.skill),
-      DEFAULT_INTERVIEW_CONFIG.maxDurationMinutes
-    );
+    const questions = await prepareInterviewQuestions(job.title, job.screening_criteria, candidate.resume_url);
 
     const interview = await createInterview({
       applicationId,
@@ -79,29 +76,14 @@ export async function startBrowserInterview(applicationId: string): Promise<Star
       maxAttempts: 1,
     });
 
-    let sequence = 1;
-    for (const section of sections) {
-      for (let i = 0; i < section.targetQuestions; i++) {
-        const generated = await getAIProvider().generateQuestion({
-          jobTitle: job.title,
-          section: section.name,
-          category: section.category ?? null,
-          priorTurns: [],
-        });
-        await createInterviewQuestion({
-          interviewId: interview.id,
-          sequence: sequence++,
-          section: section.name,
-          category: section.category ?? generated.category,
-          question: generated.question,
-          questionType: "PRIMARY",
-          parentQuestionId: null,
-        });
-      }
+    for (const [index, question] of questions.entries()) {
+      await createInterviewQuestion({ interviewId: interview.id, sequence: index + 1, ...question, questionType: "PRIMARY", parentQuestionId: null });
     }
+    await updateApplicationStage(applicationId, application.current_stage, "AI_INTERVIEW", "AI interview prepared", {
+      source: "interview", decision_source: "AI", agent_run_id: agentRun.id,
+    });
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-    await sendNextStepEmail(
+    const email = await sendNextStepEmail(
       {
         companyId,
         companyName: company?.name ?? "the company",
@@ -116,10 +98,10 @@ export async function startBrowserInterview(applicationId: string): Promise<Star
       }
     );
 
-    return { interviewId: interview.id };
+    return { interviewId: interview.id, emailSent: email.status !== "FAILED" && email.message?.provider !== "dev" && email.message?.status === "SENT", interviewUrl: `${appUrl}/candidate/video-interview` };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to prepare the video interview.";
     await markAgentRunFailed(agentRun.id, message);
-    throw new Error(message);
+    throw err;
   }
 }

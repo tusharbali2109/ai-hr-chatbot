@@ -50,7 +50,9 @@ export function InterviewActions({
   async function handleTrigger() {
     setRunning(true);
     try {
-      const result = await triggerInterviewAction(applicationId, jobId);
+      const response = await triggerInterviewAction(applicationId, jobId);
+      if (!response.ok) { showToast(response.error, "danger"); router.refresh(); return; }
+      const result = response.data;
       if (result.completedSynchronously) {
         showToast(`Interview complete: ${result.recommendation ?? result.status} (score ${result.overallScore ?? "—"}).`, "success");
       } else {
@@ -67,8 +69,9 @@ export function InterviewActions({
   async function handleSendVideoInterview() {
     setSendingVideo(true);
     try {
-      await startBrowserInterviewAction(applicationId, jobId);
-      showToast("Video interview link emailed to the candidate.", "success");
+      const response = await startBrowserInterviewAction(applicationId, jobId);
+      if (!response.ok) { showToast(response.error, "danger"); router.refresh(); return; }
+      showToast(response.data.emailSent ? "Video interview link emailed to the candidate." : `Interview prepared, but email delivery was not confirmed. Check Communications. Interview link: ${response.data.interviewUrl}`, response.data.emailSent ? "success" : "info");
       router.refresh();
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Failed to send the video interview.", "danger");
@@ -80,7 +83,9 @@ export function InterviewActions({
   async function handleRetry() {
     setRunning(true);
     try {
-      const result = await retryInterviewAction(applicationId, jobId);
+      const response = await retryInterviewAction(applicationId, jobId);
+      if (!response.ok) { showToast(response.error, "danger"); router.refresh(); return; }
+      const result = response.data;
       if (result.completedSynchronously) {
         showToast(`Interview complete: ${result.recommendation ?? result.status} (score ${result.overallScore ?? "—"}).`, "success");
       } else {
@@ -117,19 +122,19 @@ export function InterviewActions({
           <Badge tone={RECOMMENDATION_TONE[recommendation] ?? "neutral"}>AI Recommendation: {recommendation}</Badge>
         )}
         {canTrigger && (
-          <Button size="sm" variant="secondary" onClick={handleTrigger} disabled={running}>
+          <Button size="sm" variant="secondary" onClick={handleTrigger} disabled={running || sendingVideo}>
             <PhoneCall className="h-3.5 w-3.5" />
             {running ? "Calling…" : "Run AI Phone Interview"}
           </Button>
         )}
         {canTrigger && (
-          <Button size="sm" variant="secondary" onClick={handleSendVideoInterview} disabled={sendingVideo}>
+          <Button size="sm" variant="secondary" onClick={handleSendVideoInterview} disabled={running || sendingVideo}>
             <Video className="h-3.5 w-3.5" />
             {sendingVideo ? "Sending…" : "Send AI Video Interview"}
           </Button>
         )}
         {canRetry && (
-          <Button size="sm" variant="secondary" onClick={handleRetry} disabled={running}>
+          <Button size="sm" variant="secondary" onClick={handleRetry} disabled={running || sendingVideo}>
             <RefreshCw className="h-3.5 w-3.5" />
             {running ? "Calling…" : "Retry Call"}
           </Button>

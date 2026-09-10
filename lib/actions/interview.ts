@@ -1,5 +1,6 @@
 "use server";
 
+import { actionResult, type ActionResult } from "@/lib/action-result";
 import { revalidatePath } from "next/cache";
 import { triggerInterview, retryInterview, type TriggerInterviewResult } from "@/lib/interview/agent";
 import { startBrowserInterview, type StartBrowserInterviewResult } from "@/lib/interview/browser-agent";
@@ -11,15 +12,16 @@ import type { RecruitmentStage } from "@/lib/stages";
  * the unit a batch "Run Interviews" modal loops over client-side, one call
  * at a time — for the real provider, each call in the loop only enqueues
  * (the UI must say so), unlike the mock provider which completes inline. */
-export async function triggerInterviewAction(applicationId: string, jobId: string): Promise<TriggerInterviewResult> {
+async function triggerInterviewActionImpl(applicationId: string, jobId: string): Promise<TriggerInterviewResult> {
   const result = await triggerInterview(applicationId);
   revalidatePath(`/jobs/${jobId}`);
   revalidatePath("/candidates");
-  revalidatePath(`/candidates/${applicationId}`);
+  const application = await getApplication(applicationId);
+  if (application) revalidatePath(`/candidates/${application.candidate_id}`);
   return result;
 }
 
-export async function retryInterviewAction(applicationId: string, jobId: string): Promise<TriggerInterviewResult> {
+async function retryInterviewActionImpl(applicationId: string, jobId: string): Promise<TriggerInterviewResult> {
   const result = await retryInterview(applicationId);
   revalidatePath(`/jobs/${jobId}`);
   revalidatePath("/candidates");
@@ -29,11 +31,12 @@ export async function retryInterviewAction(applicationId: string, jobId: string)
 /** Sends a shortlisted candidate an AI video interview link instead of
  * placing a phone call — same eligibility, same conversation engine, just a
  * different channel (see lib/interview/browser-agent.ts). */
-export async function startBrowserInterviewAction(applicationId: string, jobId: string): Promise<StartBrowserInterviewResult> {
+async function startBrowserInterviewActionImpl(applicationId: string, jobId: string): Promise<StartBrowserInterviewResult> {
   const result = await startBrowserInterview(applicationId);
   revalidatePath(`/jobs/${jobId}`);
   revalidatePath("/candidates");
-  revalidatePath(`/candidates/${applicationId}`);
+  const application = await getApplication(applicationId);
+  if (application) revalidatePath(`/candidates/${application.candidate_id}`);
   return result;
 }
 
@@ -69,4 +72,16 @@ export async function overrideInterviewDecisionAction(
   revalidatePath(`/jobs/${jobId}`);
   revalidatePath("/candidates");
   revalidatePath(`/candidates/${application.candidate_id}`);
+}
+
+export async function triggerInterviewAction(applicationId: string, jobId: string): Promise<ActionResult<TriggerInterviewResult>> {
+  return actionResult(() => triggerInterviewActionImpl(applicationId, jobId));
+}
+
+export async function retryInterviewAction(applicationId: string, jobId: string): Promise<ActionResult<TriggerInterviewResult>> {
+  return actionResult(() => retryInterviewActionImpl(applicationId, jobId));
+}
+
+export async function startBrowserInterviewAction(applicationId: string, jobId: string): Promise<ActionResult<StartBrowserInterviewResult>> {
+  return actionResult(() => startBrowserInterviewActionImpl(applicationId, jobId));
 }
