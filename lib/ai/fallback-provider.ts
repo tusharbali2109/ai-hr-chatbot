@@ -9,10 +9,11 @@ import type { AIProvider } from "@/lib/ai/provider";
  * secondary. Anything else (a programming error, a model refusal) is not a
  * "the provider couldn't do it" signal and propagates untouched.
  *
- * If the secondary ALSO fails, the primary's error is what surfaces —
- * Anthropic is first priority, so "Anthropic is out of credits" stays the
- * actionable message rather than being masked by a fallback-config error.
- * The secondary's failure is logged for debugging.
+ * If the secondary ALSO fails, the secondary's error is what surfaces (with
+ * a note that the primary failed too) — once Anthropic is down, "the Gemini
+ * fallback isn't configured / its key was rejected / it's rate-limited" is
+ * the message an operator can actually act on, not "Anthropic is out of
+ * credits" again. Both failures are logged.
  *
  * Used to keep the product working when the Anthropic account runs out of
  * credits: Anthropic stays first priority, Gemini silently covers the gap.
@@ -29,6 +30,9 @@ export function createFallbackProvider(primary: AIProvider, secondary: AIProvide
           return await (secondary[key] as (...a: unknown[]) => Promise<unknown>)(...args);
         } catch (secondaryErr) {
           console.error(`[ai] fallback provider also failed for ${String(key)}():`, secondaryErr);
+          if (secondaryErr instanceof AIServiceError) {
+            throw new AIServiceError(`${secondaryErr.message} (Primary AI provider also failed: ${primaryErr.message})`);
+          }
           throw primaryErr;
         }
       }

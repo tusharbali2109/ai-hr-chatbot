@@ -58,7 +58,7 @@ describe("createFallbackProvider", () => {
     expect(secondary).not.toHaveBeenCalled();
   });
 
-  it("surfaces the primary (Anthropic) error when the fallback also fails", async () => {
+  it("surfaces the fallback error (noting the primary failed too) when both fail", async () => {
     const provider = createFallbackProvider(
       providerWith({
         generateJD: vi.fn(async () => {
@@ -67,11 +67,13 @@ describe("createFallbackProvider", () => {
       }),
       providerWith({
         generateJD: vi.fn(async () => {
-          throw new AIServiceError("gemini not configured");
+          throw new AIServiceError("Gemini fallback is not configured");
         }),
       })
     );
 
-    await expect(provider.generateJD({} as never)).rejects.toThrow("anthropic out of credits");
+    await expect(provider.generateJD({} as never)).rejects.toThrow(
+      "Gemini fallback is not configured (Primary AI provider also failed: anthropic out of credits)"
+    );
   });
 });
